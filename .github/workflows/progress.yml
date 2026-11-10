@@ -1,0 +1,41 @@
+name: Progress
+
+# Redraws the progress bar from what is actually in chapters/.
+#
+# Counting on a schedule would be pointless — the number only changes when a chapter does,
+# and that is a push. No cron here on purpose.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "chapters/**"
+      - "scripts/progress.py"
+      - "scripts/theme.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  draw:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Redraw progress
+        run: python scripts/progress.py
+
+      - name: Commit if it moved
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assets
+          # Nothing staged means nothing changed; committing anyway writes an empty commit
+          # every push, which is exactly the kind of noise this repo should not have.
+          git diff --staged --quiet || git commit -m "chore: redraw progress"
+          git push

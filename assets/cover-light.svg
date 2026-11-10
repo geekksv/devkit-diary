@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="420" viewBox="0 0 900 420" role="img" aria-label="devkit-diary — What one ESP32 can do with nothing attached to it">
+<rect width="900" height="420" fill="#ffffff"/>
+<rect x="0" y="0" width="5" height="420" fill="#9a5b12"/>
+<text x="64" y="92" fill="#5c6470" font-family="ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'JetBrains Mono','Liberation Mono',monospace" font-size="12" letter-spacing="3">A FIELD NOTEBOOK</text>
+<text x="64" y="168" fill="#14171d" font-family="ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'JetBrains Mono','Liberation Mono',monospace" font-size="54" font-weight="700" letter-spacing="-1">devkit-diary</text>
+<path d="M64 192 L214 192" stroke="#9a5b12" stroke-width="2.5"/>
+<text x="64" y="232" fill="#5c6470" font-family="ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'JetBrains Mono','Liberation Mono',monospace" font-size="16">What one ESP32 can do with nothing attached to it</text>
+<text x="64" y="286" fill="#9aa1ab" font-family="ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'JetBrains Mono','Liberation Mono',monospace" font-size="13">No modules. No breadboard. No shopping list.</text>
+<text x="64" y="356" fill="#14171d" font-family="ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'JetBrains Mono','Liberation Mono',monospace" font-size="14" font-weight="600">Keshav Kumar</text>
+<text x="64" y="376" fill="#9aa1ab" font-family="ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'JetBrains Mono','Liberation Mono',monospace" font-size="11">written in the open, one chapter at a time</text>
+<rect x="632" y="164" width="196" height="92" rx="5" fill="none" stroke="#e2e0db" stroke-width="1.5"/>
+<circle cx="646" cy="170" r="2" fill="#9aa1ab"/>
+<circle cx="658" cy="170" r="2" fill="#9aa1ab"/>
+<circle cx="670" cy="170" r="2" fill="#9aa1ab"/>
+<circle cx="682" cy="170" r="2" fill="#9aa1ab"/>
+<circle cx="694" cy="170" r="2" fill="#9aa1ab"/>
+<circle cx="706" cy="170" r="2" fill="#9aa1ab"/>
+<circle cx="718" cy="170" r="2" fill="#9aa1ab"/>
+<circle cx="730" cy="170" r="2" fill="#9aa1ab"/>
+<circle cx="742" cy="170" r="2" fill="#9aa1ab"/>
+<circle cx="754" cy="170" r="2" fill="#9aa1ab"/>
+<circle cx="766" cy="170" r="2" fill="#9aa1ab"/>
+<circle cx="778" cy="170" r="2" fill="#9aa1ab"/>
+<circle cx="790" cy="170" r="2" fill="#9aa1ab"/>
+<circle cx="802" cy="170" r="2" fill="#9aa1ab"/>
+<circle cx="814" cy="170" r="2" fill="#9aa1ab"/>
+<circle cx="646" cy="250" r="2" fill="#9aa1ab"/>
+<circle cx="658" cy="250" r="2" fill="#9aa1ab"/>
+<circle cx="670" cy="250" r="2" fill="#9aa1ab"/>
+<circle cx="682" cy="250" r="2" fill="#9aa1ab"/>
+<circle cx="694" cy="250" r="2" fill="#9aa1ab"/>
+<circle cx="706" cy="250" r="2" fill="#9aa1ab"/>
+<circle cx="718" cy="250" r="2" fill="#9aa1ab"/>
+<circle cx="730" cy="250" r="2" fill="#9aa1ab"/>
+<circle cx="742" cy="250" r="2" fill="#9aa1ab"/>
+<circle cx="754" cy="250" r="2" fill="#9aa1ab"/>
+<circle cx="766" cy="250" r="2" fill="#9aa1ab"/>
+<circle cx="778" cy="250" r="2" fill="#9aa1ab"/>
+<circle cx="790" cy="250" r="2" fill="#9aa1ab"/>
+<circle cx="802" cy="250" r="2" fill="#9aa1ab"/>
+<circle cx="814" cy="250" r="2" fill="#9aa1ab"/>
+<rect x="671.0" y="181.0" width="118" height="58" rx="3" fill="#fbfaf8" stroke="#e2e0db" stroke-width="1.2"/>
+<path d="M755.0 188.0 L755.0 199.0 M760.0 199.0 L760.0 188.0 M765.0 188.0 L765.0 199.0 M770.0 199.0 L770.0 188.0 M775.0 188.0 L775.0 199.0 M780.0 199.0 L780.0 188.0" stroke="#9a5b12" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+<path d="M755.0 188.0 L780.0 188.0" stroke="#9a5b12" stroke-width="1.4" fill="none" opacity="0.5"/>
+<path d="M671.0 195.0 L642 195.0" stroke="#e2e0db" stroke-width="1"/>
+<path d="M671.0 207.0 L642 207.0" stroke="#e2e0db" stroke-width="1"/>
+<path d="M671.0 219.0 L642 219.0" stroke="#e2e0db" stroke-width="1"/>
+</svg>

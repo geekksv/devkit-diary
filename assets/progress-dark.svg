@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="96" viewBox="0 0 760 96" role="img" aria-label="0 of 24 chapters written">
+<rect width="760" height="96" rx="10" fill="#0d1117"/>
+<text x="22" y="30" fill="#e8ecf2" font-family="ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'JetBrains Mono','Liberation Mono',monospace" font-size="14" font-weight="600">0 of 24 chapters</text>
+<text x="738" y="30" fill="#8b949e" font-family="ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'JetBrains Mono','Liberation Mono',monospace" font-size="11" text-anchor="end">1 in progress</text>
+<rect x="22" y="58" width="716" height="10" rx="5" fill="#232b36"/>
+<rect x="22" y="58" width="29.8" height="10" rx="5" fill="#e8a33d" opacity="0.32"/>
+</svg>
