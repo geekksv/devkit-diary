@@ -1,12 +1,15 @@
-# The catalogue
+# Ideas
 
-Twenty-four chapters. Every one runs on a bare ESP32 DevKit V1.
+Things worth building on a bare ESP32 DevKit V1.
+
+**A list to pick from, not a plan.** Nothing here is promised, the groupings are loose, and it
+will grow and change as the work does.
 
 No modules. No breadboard. No sensors, no wires, no shopping list. The only thing outside the
 board that any of these touch is a WiFi router, and you already have one.
 
-This file says **what happens** in each chapter and why it is worth building. It deliberately
-contains no code, no wiring and no library names — those live in the chapters themselves.
+What happens in each one and why it is worth the evening. No code, no wiring and no library
+names here on purpose.
 
 ---
 
@@ -252,16 +255,15 @@ knowing which you are looking at is the difference between a fix and a week of g
 
 ## Notes on the list
 
-**What was cut.** Blinking the onboard LED in morse code, a counter that survives reboots,
-generating a waveform. All real, none of them worth a chapter.
+**Left off.** Blinking the onboard LED in morse code, a counter that survives reboots,
+generating a waveform. All real, none of them interesting enough.
 
 **What broke the rule.** Streaming audio to the board over Bluetooth works, but you need a
 speaker to hear it. One board and nothing else is the whole premise, so it is out.
 
-**Three that are harder than they read.** Chapter 14 needs networking machinery well below the
-layer the other chapters use. Chapter 5 depends on an external lookup service, and the free one
-most people used has shut down. Chapter 1 works, but it needs patient tuning and the antenna
-position matters more than you would like.
+**Three that are harder than they read.** The repeater needs networking machinery well below
+the layer everything else uses. The geolocation one depends on an outside service, and the free
+one most people used has shut down. The CSI one works, but it needs patient tuning and the
+antenna position matters more than you would like.
 
-Each chapter says so in its own first paragraph. A list that only contains the easy things is a
-different and much less useful book.
+A list that only contains the easy things is a different and much less useful book.

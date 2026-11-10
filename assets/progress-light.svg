@@ -1,7 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="760" height="96" viewBox="0 0 760 96" role="img" aria-label="0 of 24 chapters written">
-<rect width="760" height="96" rx="10" fill="#ffffff"/>
-<text x="22" y="30" fill="#14171d" font-family="ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'JetBrains Mono','Liberation Mono',monospace" font-size="14" font-weight="600">0 of 24 chapters</text>
-<text x="738" y="30" fill="#5c6470" font-family="ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'JetBrains Mono','Liberation Mono',monospace" font-size="11" text-anchor="end">1 in progress</text>
-<rect x="22" y="58" width="716" height="10" rx="5" fill="#e2e0db"/>
-<rect x="22" y="58" width="29.8" height="10" rx="5" fill="#9a5b12" opacity="0.32"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="54" viewBox="0 0 760 54" role="img" aria-label="0 chapters written">
+<rect width="760" height="54" rx="8" fill="#ffffff"/>
+<rect x="0" y="0" width="3" height="54" rx="1.5" fill="#9a5b12"/>
+<text x="22" y="32" fill="#14171d" font-family="ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'JetBrains Mono','Liberation Mono',monospace" font-size="14" font-weight="600">nothing written yet</text>
+<text x="738" y="32" fill="#5c6470" font-family="ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'JetBrains Mono','Liberation Mono',monospace" font-size="11" text-anchor="end">1 in progress</text>
 </svg>

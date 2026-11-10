@@ -3,6 +3,9 @@
 Counts what is actually on disk rather than taking a number from a config file, because a
 hand-maintained count is a number that goes stale the first busy week.
 
+No total, and no bar filling toward one. How many chapters there will be is not decided, and
+a progress bar implies it is.
+
 A chapter counts as:
     done        its folder has a src/ directory with something in it
     started     the folder exists with notes or a readme, but no working sketch yet
@@ -21,7 +24,7 @@ from theme import THEMES, MONO, esc  # noqa: E402
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 CHAPTERS = ROOT / "chapters"
 ASSETS = ROOT / "assets"
-TOTAL = 24  # chapters in PROJECTS.md; raise this when the book grows
+
 
 
 def survey():
@@ -48,34 +51,21 @@ def survey():
 
 def draw(done, started, theme):
     t = THEMES[theme]
-    w, h = 760, 96
-    pad = 22
-    bar_y, bar_h = 58, 10
-    bar_w = w - pad * 2
-
-    frac_done = done / TOTAL if TOTAL else 0
-    frac_any = (done + started) / TOTAL if TOTAL else 0
+    w, h = 760, 54
 
     o = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" '
-         f'viewBox="0 0 {w} {h}" role="img" aria-label="{done} of {TOTAL} chapters written">']
-    o.append(f'<rect width="{w}" height="{h}" rx="10" fill="{t["bg"]}"/>')
+         f'viewBox="0 0 {w} {h}" role="img" aria-label="{done} chapters written">']
+    o.append(f'<rect width="{w}" height="{h}" rx="8" fill="{t["bg"]}"/>')
+    o.append(f'<rect x="0" y="0" width="3" height="{h}" rx="1.5" fill="{t["accent"]}"/>')
 
-    o.append(f'<text x="{pad}" y="30" fill="{t["ink"]}" font-family="{MONO}" '
-             f'font-size="14" font-weight="600">{done} of {TOTAL} chapters</text>')
+    written = "nothing written yet" if done == 0 else (
+        "1 chapter written" if done == 1 else f"{done} chapters written")
+    o.append(f'<text x="22" y="32" fill="{t["ink"]}" font-family="{MONO}" '
+             f'font-size="14" font-weight="600">{esc(written)}</text>')
 
-    right = esc(f"{started} in progress" if started else "one board, nothing attached")
-    o.append(f'<text x="{w - pad}" y="30" fill="{t["mute"]}" font-family="{MONO}" '
-             f'font-size="11" text-anchor="end">{right}</text>')
-
-    # track, then everything started, then everything finished on top
-    o.append(f'<rect x="{pad}" y="{bar_y}" width="{bar_w}" height="{bar_h}" rx="5" '
-             f'fill="{t["rule"]}"/>')
-    if frac_any > 0:
-        o.append(f'<rect x="{pad}" y="{bar_y}" width="{bar_w * frac_any:.1f}" '
-                 f'height="{bar_h}" rx="5" fill="{t["accent"]}" opacity="0.32"/>')
-    if frac_done > 0:
-        o.append(f'<rect x="{pad}" y="{bar_y}" width="{bar_w * frac_done:.1f}" '
-                 f'height="{bar_h}" rx="5" fill="{t["accent"]}"/>')
+    note = f"{started} in progress" if started else "one board, nothing attached"
+    o.append(f'<text x="{w - 22}" y="32" fill="{t["mute"]}" font-family="{MONO}" '
+             f'font-size="11" text-anchor="end">{esc(note)}</text>')
 
     o.append("</svg>")
     return "\n".join(o)
@@ -87,7 +77,7 @@ def main():
     for theme in THEMES:
         (ASSETS / f"progress-{theme}.svg").write_text(draw(done, started, theme),
                                                       encoding="utf-8")
-    print(f"progress: {done} done, {started} in progress, {TOTAL} total")
+    print(f"progress: {done} written, {started} in progress")
 
 
 if __name__ == "__main__":

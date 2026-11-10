@@ -3,3 +3,6 @@ __pycache__/
 .DS_Store
 .vscode/
 build/
+
+# the sketches live here but are not published yet
+projects/
