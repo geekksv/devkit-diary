@@ -1,4 +1,4 @@
-# Build log — chapter 1
+# Build log — chapter 2
 
 Dated entries, written while building. Failures stay in.
 

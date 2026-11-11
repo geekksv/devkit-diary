@@ -28,6 +28,8 @@ commercial presence sensors that cost real money. The rig is one board and the r
 already own.
 
 > **What you learn:** that a radio is a sensor, and that the signal was carrying a description
+
+> **In progress as [chapter 2](chapters/02-seeing-through-a-wall/).**
 > of the room the whole time.
 
 ### 2 · The board can hear electricity
@@ -133,6 +135,8 @@ middle. Nothing said in the room leaves the room.
 Useful where there is no signal. Interesting everywhere else.
 
 > **What you learn:** how little infrastructure a working chat system actually requires.
+>
+> **Written up as [chapter 1](chapters/01-a-chat-room-that-needs-nothing/).**
 
 ### 12 · Phones as controllers
 

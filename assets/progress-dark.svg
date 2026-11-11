@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="760" height="54" viewBox="0 0 760 54" role="img" aria-label="0 chapters written">
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="54" viewBox="0 0 760 54" role="img" aria-label="1 chapters written">
 <rect width="760" height="54" rx="8" fill="#0d1117"/>
 <rect x="0" y="0" width="3" height="54" rx="1.5" fill="#e8a33d"/>
-<text x="22" y="32" fill="#e8ecf2" font-family="ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'JetBrains Mono','Liberation Mono',monospace" font-size="14" font-weight="600">nothing written yet</text>
+<text x="22" y="32" fill="#e8ecf2" font-family="ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'JetBrains Mono','Liberation Mono',monospace" font-size="14" font-weight="600">1 chapter written</text>
 <text x="738" y="32" fill="#8b949e" font-family="ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'JetBrains Mono','Liberation Mono',monospace" font-size="11" text-anchor="end">1 in progress</text>
 </svg>

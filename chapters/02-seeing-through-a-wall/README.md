@@ -1,4 +1,4 @@
-# 1 · Seeing through a wall with WiFi
+# 2 · Seeing through a wall with WiFi
 
 > **Needs:** one ESP32 DevKit V1, and a WiFi router that already exists in the room.
 > **Status:** in progress — written before building, as every chapter here is.
@@ -48,8 +48,8 @@ Espressif's own reference implementation says as much.
 that are easy to forget because nothing about the board looks directional. Moving it twenty
 centimetres can change the result more than moving the person being detected.
 
-These are the three reasons this chapter is first and still honest about being the hardest
-thing in Part I.
+These are the three reasons this one is taking the longest, and the reason it is not the
+chapter that got finished first.
 
 ## The idea being tested
 
