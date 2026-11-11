@@ -18,15 +18,24 @@
 #include <WebServer.h>
 #include <DNSServer.h>
 #include <esp_random.h>    // esp_random(); NOT reachable via Arduino.h on core 3.x
+#include <esp_wifi.h>      // esp_wifi_ap_get_sta_list() — per-phone signal strength
 #include <strings.h>       // strcasecmp
 #include "ui.h"
 
 const char *AP_NAME = "devkit-chat";
 const char *AP_PASS = "";          // open; set 8+ characters to lock it
 
+// How many phones may associate at once. The Arduino core defaults this to 4, which is the
+// real reason a room of people cannot all get on — not the roster size below. 8 is the
+// ceiling worth asking for: the core ships with CONFIG_LWIP_DHCPS_MAX_STATION_NUM=8, so a
+// ninth phone would associate and then sit there with no DHCP lease, which looks like a
+// broken network rather than a full one.
+const int MAX_STATIONS = 8;
+
 const int MAX_MSGS = 40;           // ring buffer — 520 KB of RAM is not a lot
 const int MAX_LEN = 140;
-const int MAX_USERS = 24;
+const int MAX_USERS = 24;        // deliberately > MAX_STATIONS: a name is held for
+                                 // IDLE_MS after a phone leaves, so names outlive radios
 const int NAME_LEN = 15;
 const uint32_t IDLE_MS = 120000;   // a name is released this long after a phone goes quiet
 
@@ -104,6 +113,29 @@ static uint32_t newToken() {
 }
 
 // ── endpoints ────────────────────────────────────────────────────────────────
+
+// Signal strength of every associated phone, strongest first. The AP knows this for free —
+// it is how "what is the range in this room" stops being a guess. Note these are radios, not
+// names: the identity here is the token, and an HTTP request does not carry a MAC, so there
+// is no honest way to label a bar with a person.
+static void sendSignals(String &o) {
+  wifi_sta_list_t list;
+  o += ",\"sig\":[";
+  if (esp_wifi_ap_get_sta_list(&list) == ESP_OK) {
+    int8_t r[ESP_WIFI_MAX_CONN_NUM];
+    int n = list.num;
+    if (n > ESP_WIFI_MAX_CONN_NUM) n = ESP_WIFI_MAX_CONN_NUM;
+    for (int i = 0; i < n; i++) r[i] = list.sta[i].rssi;
+    for (int i = 1; i < n; i++) {                 // insertion sort, strongest first
+      const int8_t k = r[i];
+      int j = i - 1;
+      while (j >= 0 && r[j] < k) { r[j + 1] = r[j]; j--; }
+      r[j + 1] = k;
+    }
+    for (int i = 0; i < n; i++) { if (i) o += ','; o += String((int)r[i]); }
+  }
+  o += "]";
+}
 
 static void sendRoster(String &o) {
   o += ",\"who\":[";
@@ -186,6 +218,8 @@ static void handleMsgs() {
   }
   o += "]";
   sendRoster(o);
+  sendSignals(o);
+  o += ",\"cap\":" + String(MAX_STATIONS);
   o += "}";
   web.send(200, "application/json", o);
 }
@@ -249,6 +283,12 @@ body.in #chat{display:flex}
 .youbar b{color:var(--ink);font-weight:750}
 .youbar .ghost{margin-left:auto;padding:6px 12px;font-size:12px;width:auto;flex:none}
 .roster{display:flex;flex-wrap:wrap;gap:6px;padding:0 2px 10px}
+.sigbox{margin:0 2px 10px;font-size:12.5px;color:var(--mute)}
+.sigbox summary{cursor:pointer;padding:4px 0;color:var(--mute)}
+.sigrow{display:flex;align-items:center;gap:8px;padding:4px 0}
+.sigbar{flex:1;height:6px;border-radius:999px;background:var(--card2);overflow:hidden}
+.sigbar i{display:block;height:100%;border-radius:999px;transition:width .4s}
+.sigrow b{flex:0 0 58px;text-align:right;font-variant-numeric:tabular-nums;font-size:11.5px}
 .chip{font-size:11.5px;padding:4px 10px;border-radius:999px;background:var(--card2);
   border:1px solid var(--line);color:var(--mute)}
 form{display:flex;gap:9px;padding:12px 0 calc(14px + env(safe-area-inset-bottom));
@@ -289,6 +329,11 @@ form button{flex:0 0 68px;border-radius:14px}
     <button class="ghost" onclick="leave()">leave</button>
   </div>
   <div class="roster" id="roster"></div>
+  <details class="sigbox"><summary id="sigsum">signal —</summary>
+    <div id="sigs"></div>
+    <p class="sub" style="margin:8px 0 0">one row per connected radio, strongest first.
+      walk away until a bar turns red and that is your range in this room.</p>
+  </details>
   <div id="log"><p class="empty">no messages yet — say something</p></div>
   <form id="f" autocomplete="off">
     <input id="t" placeholder="message" maxlength="140" required autocomplete="off">
@@ -349,6 +394,34 @@ async function leave(){
   backToJoin('');
 }
 
+// dBm -> a percentage and a colour. -50 and better is as good as it gets indoors;
+// below about -80 a phone technically stays associated and in practice stops working.
+function sigQuality(dbm){
+  const pct=Math.max(4,Math.min(100,Math.round((dbm+95)*(100/45))));
+  const col=dbm>-55?'var(--mint)':dbm>-67?'var(--amber)':dbm>-78?'#ffd97a':'var(--red)';
+  const word=dbm>-55?'strong':dbm>-67?'good':dbm>-78?'weak':'about to drop';
+  return {pct,col,word};
+}
+
+function drawSignals(list,cap){
+  const box=$('sigs');
+  $('sigsum').textContent='signal — '+list.length+' of '+cap+' radios'
+    +(list.length?' · weakest '+list[list.length-1]+' dBm':'');
+  box.innerHTML='';
+  for(const dbm of list){
+    const q=sigQuality(dbm);
+    const row=document.createElement('div');row.className='sigrow';
+    const bar=document.createElement('div');bar.className='sigbar';
+    const fill=document.createElement('i');
+    fill.style.width=q.pct+'%';fill.style.background=q.col;
+    bar.appendChild(fill);
+    const lab=document.createElement('b');lab.textContent=dbm+' dBm';
+    const w=document.createElement('span');w.textContent=q.word;w.style.flex='0 0 86px';
+    row.appendChild(bar);row.appendChild(lab);row.appendChild(w);
+    box.appendChild(row);
+  }
+}
+
 function drawRoster(el,names){
   el.innerHTML='';
   for(const n of names){
@@ -392,7 +465,9 @@ async function poll(){
     }
     if(d.m.length){seen=d.next;log.scrollTop=log.scrollHeight}
     drawRoster($('roster'),d.who);
-    $('sub').textContent=d.here+(d.here===1?' person':' people')+' in the room';
+    drawSignals(d.sig||[],d.cap||0);
+    $('sub').textContent=d.here+(d.here===1?' person':' people')+' in the room'
+      +(d.devices>=d.cap?' · room full':'');
   }catch(e){$('sub').textContent='lost the board'}
   timer=setTimeout(poll,900);
 }
@@ -434,7 +509,9 @@ void setup() {
   started = millis();
 
   WiFi.mode(WIFI_AP);
-  WiFi.softAP(AP_NAME, strlen(AP_PASS) ? AP_PASS : NULL);
+  // (ssid, pass, channel, hidden, max_connection) — the 4th positional default is the
+  // one that silently caps the room at four phones.
+  WiFi.softAP(AP_NAME, strlen(AP_PASS) ? AP_PASS : NULL, 1, 0, MAX_STATIONS);
   const IPAddress ip = WiFi.softAPIP();
 
   // Answer every DNS lookup with our own address. That is what makes a phone decide it is

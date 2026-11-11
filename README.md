@@ -46,10 +46,14 @@ it does not require buying anything.
 ## How to read this
 
 **Chapters stand alone.** Start anywhere. Each one says what it does, what the board is
-actually doing underneath, and where it went wrong.
+actually doing underneath, the limits it runs into, and where it went wrong.
 
-**The failures are kept.** Every chapter has a `notes.md` — the real log, written while
-building, including the hours lost to things that turned out to be a bad USB cable. An
+**The numbers are real.** Capacity, memory and radio figures are read out of the installed
+core and its `sdkconfig` rather than repeated from a tutorial, and a chapter says which of its
+claims are measured and which are still expectations.
+
+**The failures are kept.** Where a design had to be thrown away, the chapter says so and says
+why — the version that was wrong is usually more instructive than the one that works. An
 account where nothing goes wrong is not an account of building anything.
 
 **The dead ends are on purpose.** Some of this is about things that do not work: a sensor the
