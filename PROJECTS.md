@@ -77,16 +77,21 @@ the crystal keeping time is sensitive to temperature and to being slightly imper
 
 ## Part II · Things you will actually keep using
 
-### 7 · The slide clicker
+### 7 · A remote for the whole machine
 
 The board pairs with a laptop as a Bluetooth keyboard — not a thing pretending to be one, an
-actual keyboard as far as the laptop is concerned. Two touch pins become next and back. It is a
-presentation remote, built from a board and nothing else.
+actual keyboard as far as the laptop is concerned. Then it serves a page of buttons to your
+phone over its own WiFi, so a tap on the phone becomes a keystroke on the laptop: slides, the
+media keys, whole typed sentences, a new browser tab opening on a site you pick. Two touch pins
+on the edge also make it a bare clicker with no phone at all.
 
-The first chapter that produces a tool worth carrying to a room you are teaching in.
+The first tool in the book worth carrying to a room you are teaching in — and the only sketch
+that holds both radios open at once.
 
-> **What you learn:** how a device declares what kind of device it is, and why anything can
-> claim to be a keyboard.
+> **What you learn:** how a device declares what kind of device it is, and that nothing
+> downstream verifies the claim.
+>
+> **Written up as [chapter 2](chapters/02-a-remote-for-the-whole-machine/).**
 
 ### 8 · Proof the internet went down
 
