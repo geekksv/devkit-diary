@@ -47,14 +47,6 @@ const char *AP_PASS = "";                // open; set 8+ characters to lock the 
 const char *BT_NAME = "devkit-remote";   // the name the laptop sees when pairing
 const int   MAX_STATIONS = 4;            // phones on the control page at once; one is usual
 
-// Capacitive touch, so the board also works as a bare clicker with no phone at all: hold it
-// like a remote and your thumb finds the two header pins on the edge. GPIO 32 and 33 sit next
-// to each other on the DevKit V1 and are both safe to use (not strapping pins, not wired to
-// flash). This is the SECONDARY input and the less reliable one — see calibrate() below.
-const int TOUCH_NEXT = T9;   // GPIO 32
-const int TOUCH_PREV = T8;   // GPIO 33
-const bool TOUCH_ENABLED = true;
-
 // ── HID usages ───────────────────────────────────────────────────────────────
 // Keyboard page (0x07) usage IDs. These are key positions, not characters.
 enum {
@@ -127,10 +119,6 @@ BLECharacteristic *kbIn = nullptr;   // report ID 1
 BLECharacteristic *ccIn = nullptr;   // report ID 2
 volatile bool linked = false;        // a BLE host is connected
 uint32_t started = 0;
-
-// Touch baselines, learned at boot. A touch on the classic ESP32 reads LOWER than rest, so a
-// press is a reading that has fallen below a fraction of the baseline.
-int baseNext = 0, basePrev = 0;
 
 // ── sending keys ─────────────────────────────────────────────────────────────
 // A HID report carries no report ID in its payload here: inputReport(id) installs a Report
@@ -227,28 +215,6 @@ static void startBLE() {
   adv->addServiceUUID(hid->hidService()->getUUID());
   adv->setScanResponse(true);
   BLEDevice::startAdvertising();
-}
-
-// ── touch (the no-phone clicker) ─────────────────────────────────────────────
-static void calibrate() {
-  if (!TOUCH_ENABLED) return;
-  // Average a handful of untouched reads. Do this with nothing near the pins — the baseline
-  // is whatever "not touched" happens to be on this board, in this room, at this temperature,
-  // and it drifts with all three. That drift is exactly why a bought remote has real buttons.
-  long n = 0, p = 0;
-  for (int i = 0; i < 16; i++) { n += touchRead(TOUCH_NEXT); p += touchRead(TOUCH_PREV); delay(8); }
-  baseNext = n / 16;
-  basePrev = p / 16;
-}
-
-static void pollTouch() {
-  if (!TOUCH_ENABLED || !linked) return;
-  static uint32_t lock = 0;
-  if (millis() < lock) return;                 // debounce: one press per 320 ms
-  // A press is a reading fallen well below baseline. 60% is a wide margin that tolerates some
-  // drift without firing on noise; too tight and a warm board stops responding.
-  if (touchRead(TOUCH_NEXT) < baseNext * 0.6) { tapKey(0, K_RIGHT); lock = millis() + 320; }
-  else if (touchRead(TOUCH_PREV) < basePrev * 0.6) { tapKey(0, K_LEFT); lock = millis() + 320; }
 }
 
 // ── endpoints ────────────────────────────────────────────────────────────────
@@ -485,7 +451,6 @@ void setup() {
 
   // Bluetooth first, so its controller claims its memory before WiFi starts sharing the radio.
   startBLE();
-  calibrate();
 
   WiFi.mode(WIFI_AP);
   WiFi.softAP(AP_NAME, strlen(AP_PASS) ? AP_PASS : NULL, 1, 0, MAX_STATIONS);
@@ -507,5 +472,4 @@ void setup() {
 void loop() {
   dns.processNextRequest();
   web.handleClient();
-  pollTouch();
 }

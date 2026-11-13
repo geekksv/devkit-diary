@@ -82,8 +82,7 @@ the crystal keeping time is sensitive to temperature and to being slightly imper
 The board pairs with a laptop as a Bluetooth keyboard — not a thing pretending to be one, an
 actual keyboard as far as the laptop is concerned. Then it serves a page of buttons to your
 phone over its own WiFi, so a tap on the phone becomes a keystroke on the laptop: slides, the
-media keys, whole typed sentences, a new browser tab opening on a site you pick. Two touch pins
-on the edge also make it a bare clicker with no phone at all.
+media keys, whole typed sentences, a new browser tab opening on a site you pick.
 
 The first tool in the book worth carrying to a room you are teaching in — and the only sketch
 that holds both radios open at once.

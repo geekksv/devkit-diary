@@ -3,7 +3,7 @@
 > **Needs:** one ESP32 DevKit V1. A laptop to pair it to, and a phone to drive it from.
 > **Status:** flashed and working. On the **Huge APP** partition (the default overflows — see
 > below) it pairs to a laptop with no PIN, serves the page to a phone, and the buttons drive the
-> laptop. Not yet checked: the two touch pins, and the boot heap figure.
+> laptop. Not yet checked: the boot heap figure.
 
 Pair the board to a laptop the way you would pair any Bluetooth keyboard. From then on it can
 press keys on that laptop — move slides, work the media keys, type whole sentences. The buttons
@@ -136,22 +136,6 @@ guess that is usually right and occasionally too short. This is kept, not hidden
 the honest shape of the trick: a keyboard can only press keys, and "open a site" is a little
 play performed on the assumption that the stage is set.
 
-## The no-phone clicker
-
-Two capacitive touch pins mean the board also works with no phone at all: hold it like a remote
-and your thumb finds **GPIO 32 (next)** and **GPIO 33 (previous)** on the edge header. They are
-next to each other, and neither is a strapping pin or wired to the flash, so they are safe to
-touch.
-
-This is the secondary input and the less reliable one, and the chapter keeps it partly to make
-that point. A touch on the classic ESP32 reads *lower* than rest — the opposite direction from
-the S2 and S3 — and "rest" is not a fixed number. It drifts with temperature, and with whether
-the board is on USB or a battery. The sketch learns a baseline at boot (`calibrate()`) and
-fires when a reading falls below 60% of it, which is a wide margin chosen to tolerate some drift
-without triggering on noise. Leave the board running for an hour and the baseline it measured
-cold may no longer fit. **This is exactly why a bought remote has real buttons** — a mechanical
-switch does not drift.
-
 ## Coexistence: the bill for two radios
 
 WiFi and Bluetooth share one antenna and one 2.4 GHz front end. Running both means the radio is
@@ -190,7 +174,7 @@ chapter is about: you pay for the second stack in flash whether you like it or n
 
 The fix is a board menu, not a code change. **Tools → Partition Scheme → "Huge APP (3MB No OTA
 / 1MB SPIFFS)"** hands the application 3 MB by giving up the OTA slot this sketch was never
-going to use. With that selected the same binary reports **1,710,547 bytes — 54% of 3 MB** —
+going to use. With that selected the binary reports **1,695,403 bytes — 53% of 3 MB** —
 and global variables sit at 19% of RAM, leaving about 258 KB for the stacks and buffers the two
 radios need at run time. Giving up OTA is the honest trade: a remote you reflash over USB does
 not need the ability to update itself wirelessly, and chapter 14 — the over-the-air one — is
@@ -220,7 +204,6 @@ range.
   and you re-pair. That is how a single keyboard behaves.
 - **US keyboard layout only** — see the typing section. Non-US characters are skipped.
 - **"Open a site" assumes a browser is focused.** It is a macro, not a protocol.
-- **The touch pins drift.** Fine for a demo, not a product; the phone is the dependable input.
 - **No encryption of the control page.** Anyone on the board's WiFi can drive the laptop.
   Set `AP_PASS` to 8+ characters if the room is not yours.
 
@@ -245,14 +228,12 @@ The HID report map, the two-report (keyboard + consumer) split, the report-refer
 behaviour that keeps the report ID out of the payload, the bundled `US_KEYBOARD` ASCII table,
 and the coexistence flag were all read out of the installed core (3.3.11). The sketch compiles
 against it for ESP32 Dev Module — overflowing the default partition at 1.71 MB and fitting Huge
-APP at 54% of 3 MB, both found by compiling, not guessed.
+APP at 53% of 3 MB, both found by compiling, not guessed.
 
 Then it was flashed. **Confirmed on hardware:** the "just works" pairing is accepted with no
 PIN prompt, the laptop files the board under keyboards, the phone gets the page over the board's
 WiFi, and the buttons move slides, work the media keys, open a site and type onto the laptop —
-all with both radios up at once. Still an expectation: the **two touch pins** (the no-phone
-clicker was not exercised, so its calibration on warm hardware is untested), and the exact
-**free heap at boot**, which prints on the serial line but has not been written down here yet.
+all with both radios up at once. Still an expectation: the exact **free heap at boot**, which prints on the serial line but has not been written down here yet.
 
 ## Sources
 
