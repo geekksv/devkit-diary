@@ -1,8 +1,9 @@
 # 2 · A remote for the whole machine
 
 > **Needs:** one ESP32 DevKit V1. A laptop to pair it to, and a phone to drive it from.
-> **Status:** sketch complete; compiles, but only on the **Huge APP** partition — the default
-> one overflows (see below). Page logic tested off-hardware; first flash and pairing pending.
+> **Status:** flashed and working. On the **Huge APP** partition (the default overflows — see
+> below) it pairs to a laptop with no PIN, serves the page to a phone, and the buttons drive the
+> laptop. Not yet checked: the two touch pins, and the boot heap figure.
 
 Pair the board to a laptop the way you would pair any Bluetooth keyboard. From then on it can
 press keys on that laptop — move slides, work the media keys, type whole sentences. The buttons
@@ -242,12 +243,16 @@ Serial at 115200 prints both names and the free heap on boot.
 
 The HID report map, the two-report (keyboard + consumer) split, the report-reference descriptor
 behaviour that keeps the report ID out of the payload, the bundled `US_KEYBOARD` ASCII table,
-and the coexistence flag were all read out of the installed core (3.3.11). The sketch **compiles
-against it for ESP32 Dev Module** — overflowing the default partition at 1.71 MB and fitting
-Huge APP at 54% of 3 MB, both of which were found by compiling, not guessed. What is still an
-expectation: the pairing handshake on a real laptop, whether "just works" bonding is accepted
-without a prompt on current Windows and macOS, the real coexistence latency, the free heap at
-boot, and the touch threshold on warm hardware. Those arrive with the first flash.
+and the coexistence flag were all read out of the installed core (3.3.11). The sketch compiles
+against it for ESP32 Dev Module — overflowing the default partition at 1.71 MB and fitting Huge
+APP at 54% of 3 MB, both found by compiling, not guessed.
+
+Then it was flashed. **Confirmed on hardware:** the "just works" pairing is accepted with no
+PIN prompt, the laptop files the board under keyboards, the phone gets the page over the board's
+WiFi, and the buttons move slides, work the media keys, open a site and type onto the laptop —
+all with both radios up at once. Still an expectation: the **two touch pins** (the no-phone
+clicker was not exercised, so its calibration on warm hardware is untested), and the exact
+**free heap at boot**, which prints on the serial line but has not been written down here yet.
 
 ## Sources
 

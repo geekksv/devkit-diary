@@ -387,9 +387,9 @@ static const char BODY[] PROGMEM = R"HTML(
   </form>
   <div class="quick" id="quick">
     <button data-u="youtube.com">YouTube</button>
-    <button data-u="github.com/geekksv">GitHub</button>
-    <button data-u="geekksv.pages.dev">My site</button>
     <button data-u="google.com">Google</button>
+    <button data-u="maps.google.com">Maps</button>
+    <button data-u="wikipedia.org">Wikipedia</button>
   </div>
   <p class="hint">Opens a new tab and types the address. It needs a browser window in front —
     there is no key for “launch the browser”, so this leans on it already being open.</p>
