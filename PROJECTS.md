@@ -132,6 +132,9 @@ web page, nothing to install. Four people playing something hosted entirely on a
 of a stick of gum.
 
 > **What you learn:** how to keep several clients in sync in real time without a backend.
+>
+> **Started as [chapter 3](chapters/03-tic-tac-toe-with-a-short-memory/)** — two phones, rooms by
+> code, and the board as referee. The big-screen version is still to come.
 
 ### 12 · Drop a file, grab it on the other device
 
