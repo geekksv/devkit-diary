@@ -1,9 +1,9 @@
 # 4 · Hide the board
 
 > **Needs:** one ESP32 DevKit V1 and a **power bank** to run it from. Two to eight phones.
-> **Status:** compiles against the core, and the game logic is tested on a laptop against a
-> simulated radio (figures below). Not yet flashed — every number here about how a real house
-> bends the signal is still an expectation, and the chapter says which.
+> **Status:** flashed and played on a phone and a tablet, with the board on a power bank. The
+> meter warms as you close in and BOOT credits whoever is holding it. The dBm thresholds are
+> still the starting values — not yet tuned to a measured house.
 
 Everyone joins the board's WiFi. One player hides the board somewhere in the house — behind the
 books, in a coat pocket, under a cushion — and everyone else hunts for it with their phone.
@@ -67,6 +67,41 @@ words trustworthy despite the noise.
 
 > **What you learn:** how to get a usable signal out of a noisy one — and why "how far away is
 > the WiFi" is a much harder question than it sounds.
+
+## How far the board reaches
+
+The whole hunt happens inside one WiFi cell, so the board's range is the size of the playing
+field. Three numbers set it:
+
+| | | Where it comes from |
+|---|---|---|
+| **Transmit power** | **20 dBm** (100 mW) at most | `CONFIG_ESP_PHY_MAX_WIFI_TX_POWER=20` in the installed core's `sdkconfig`; `WiFi.setTxPower()` can lower it, never raise it past this |
+| **Receive sensitivity** | about **−98 dBm** at 1 Mbit/s, about **−73 dBm** at the fastest 802.11n rate | the ESP32 datasheet |
+| **Antenna** | a zig-zag trace on the module's PCB, roughly omnidirectional | the DevKit V1 itself — no connector for a better one |
+
+Range is not one number, because the link is two-way and the weaker direction wins. A phone
+transmits at similar power, and the board has to hear it as well as be heard. The link also
+slows down before it breaks: as the signal weakens, the radios drop to slower, more robust
+rates, which is why a phone stays connected well past the point where pages feel sluggish.
+
+**What that means in practice** — typical figures for a PCB-antenna ESP32, *not measured for
+this chapter*:
+
+- **Open air, line of sight:** on the order of **100 m** or more before phones drop off.
+- **Indoors:** roughly **15–30 m**, depending almost entirely on what is in the way. Every
+  interior wall costs a few dB; brick and concrete cost more; a fridge, a bathroom of tiles or
+  a fish tank can cost as much as a floor.
+- **Through a floor:** usually workable one storey up or down; two is unreliable.
+
+For this game the useful edge is where the meter reads about **−90 dBm**, the bottom of its
+scale — further than that and phones start dropping off the network, which the page shows as
+*listening…*. In a typical flat the whole home is in range; in a large house, hide it on the
+same floor as the hunters.
+
+**The board can measure its own range.** Hold a phone next to it and walk away: the dBm figure
+under the meter is the reading at every step, and the point where the phone leaves the
+network is the edge. That walk is the experiment this chapter still owes — the figures above
+are the expectation it will be checked against.
 
 ## Taming the noise
 
@@ -193,13 +228,19 @@ sees all of them, the smoothed reading settling, *warmer* appearing as a hunter 
 claim refused when nobody is close, the hider never credited even when loudest, a phone that
 stopped polling unable to claim, the hider leaving or giving up, and a ninth player turned away.
 
-**Not yet confirmed on hardware:** all of it on a real board — and in particular whether the
-station list's signal updates fast enough to follow someone walking, how far −90 dBm reaches
-in a real house, and whether −55 dBm is the right line for *holding it*.
+**Confirmed on hardware:** a full round on a phone and a tablet with the board on a power
+bank — joining, hiding with the LED blinking, BOOT starting the hunt, the meter warming as a
+hunter closes in, and BOOT crediting the hunter holding the board.
+
+**Not yet measured:** the board's real range in this house (the walk described under *How far
+the board reaches*), how fast the station list's reading follows someone walking, and whether
+−90, −35 and −55 dBm are the right values or just close enough.
 
 ## Sources
 
 - The ESP32 Arduino core's bundled `WebServer`, `DNSServer`, and ESP-IDF's
   `esp_wifi_ap_get_sta_list()` and `esp_wifi_ap_get_sta_list_with_ip()`.
+- [ESP32 datasheet](https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf)
+  — Wi-Fi radio characteristics: transmit power and receive sensitivity by data rate.
 - Chapter 1, for the signal bars this chapter finally puts names to, and chapter 3, for the
   redirect.
