@@ -1,10 +1,10 @@
 # 3 · Tic-tac-toe with a short memory
 
 > **Needs:** one ESP32 DevKit V1. Two phones per game — up to eight phones, four games at once.
-> **Status:** flashed and played. A phone and a tablet create and join rooms over the board's
-> WiFi. The first flash found two bugs — a page that could not reach the board, and a board
-> that froze on "create a room" — both written up below. The move clock is newer than that
-> test and still to be confirmed on hardware.
+> **Status:** flashed and played, both variants. A phone and a tablet create and join rooms
+> over the board's WiFi, and vanishing runs with its move clock and *next* marker on hardware.
+> The first flash found two bugs — a page that could not reach the board, and a board that
+> froze on "create a room" — both written up below.
 
 The board makes its own WiFi network and serves a game of tic-tac-toe to every phone that
 joins. One phone creates a room and gets a four-letter code; a second phone types the code, or
@@ -283,10 +283,12 @@ count), three hundred vanishing moves with never more than three marks each and 
 the clock — nothing at 14.9 s, the board moving for the right player at 15.
 
 **Confirmed on hardware:** a phone and a tablet on the board's WiFi, the redirect landing the
-page on `192.168.4.1`, and rooms created and joined.
+page on `192.168.4.1`, rooms created and joined, and a vanishing game played through — the
+three-mark limit, the oldest mark going, the *next* marker on the mark about to vanish, and the
+fifteen-second clock counting down and moving for a player who let it run out.
 
-**Not yet confirmed on hardware:** the move clock and the *next* marker, which were added after
-that test; the seat timeout; and the claim that eight phones polling at 700 ms is comfortable.
+**Not yet confirmed on hardware:** the 45-second seat timeout, and the claim that eight phones
+polling at 700 ms is comfortable — so far it has only met two.
 
 ## Sources
 
