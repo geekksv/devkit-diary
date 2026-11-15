@@ -1,8 +1,10 @@
 # 3 · Tic-tac-toe with a short memory
 
 > **Needs:** one ESP32 DevKit V1. Two phones per game — up to eight phones, four games at once.
-> **Status:** compiles against the core (figures below). Not yet flashed — everything this
-> chapter says about how it *behaves* on hardware is still an expectation, and marked as one.
+> **Status:** flashed and played. A phone and a tablet create and join rooms over the board's
+> WiFi. The first flash found two bugs — a page that could not reach the board, and a board
+> that froze on "create a room" — both written up below. The move clock is newer than that
+> test and still to be confirmed on hardware.
 
 The board makes its own WiFi network and serves a game of tic-tac-toe to every phone that
 joins. One phone creates a room and gets a four-letter code; a second phone types the code, or
@@ -10,8 +12,9 @@ taps the room in the list of games waiting for an opponent. Then they play — o
 refereed by a chip with no internet connection and nothing attached to it.
 
 There are two games in the box. **Classic** is the one everybody knows. **Vanishing** gives
-each player only three marks: place a fourth and your oldest one is wiped off the board. It
-sounds like a small change. It is a different game.
+each player only three marks: place a fourth and your oldest one is wiped off the board. There
+are no draws, and every move is on a fifteen-second clock. It sounds like a small change. It is
+a different game.
 
 ---
 
@@ -43,6 +46,7 @@ Behind the page, eight `Room` slots in a plain array. Each one holds:
 | `at[9]` | the move number each mark was placed on |
 | `ply`, `starter` | moves made this round, and who opened it — together they *are* the turn |
 | `result`, `line` | playing / winner / draw, and which of the eight lines won |
+| `turnAt`, `timedOut` | when the current turn began, and who last ran out of time |
 | `wins`, `draws` | the running score for as long as both stay |
 | `ver` | bumps on every change |
 
@@ -73,8 +77,14 @@ turn.
 
 ## The vanishing variant
 
-Each player may have at most three marks on the board. When you place a fourth, your
-**oldest** mark disappears in the same move.
+Three rules, and the board enforces all of them:
+
+- **Three marks each.** A player can have at most three marks on the board at any moment.
+- **Your fourth wipes your first.** Placing a fourth mark removes your oldest one in the same
+  move. Every move after that removes your oldest remaining mark, so the count never goes
+  above three.
+- **No draws.** Six marks at most on nine cells: the board never fills, so it cannot end level.
+  Play goes on until someone lines up three.
 
 The board does not keep a queue for this. Every mark records the move number it was placed on
 (`at[]`), and the mark that goes is simply the one with the smallest number among the mover's
@@ -91,14 +101,35 @@ So a line that *needed* the vanished mark does not count. You cannot win with a 
 longer have, and — because the removed mark is still on the board while you choose — you
 cannot place onto the cell you are about to lose.
 
-**The mark about to go is shown faded**, on both phones, for both players. Without that, the
-variant is a memory test; with it, it is a strategy game, because you can see your opponent's
-next loss as clearly as your own and plan for the hole it will leave.
+### Showing what is about to go
 
-**It never fills up.** Six marks at most on nine cells, so the classic draw — a full board —
-cannot happen. Two careful players can circle forever, so the board calls a draw after **60
-moves**. That number is a guess at "long enough that a draw was earned", not something
-measured, and it is a constant at the top of the sketch.
+The game is only fair if nobody is surprised by it, so the page marks the mark that will vanish:
+
+- **The mover's** next-to-go mark — the one that disappears the moment they tap — gets a
+  pulsing red dashed outline and a small **next** tag, and the line under the board says it in
+  words: *your X in the top-left vanishes when you move*.
+- **The other player's** next-to-go mark is faded, without the alarm. It matters one move
+  later, and you can plan for the hole it will leave.
+
+Both phones show both, because watching your opponent's mark about to disappear is half the
+strategy.
+
+### The clock
+
+No draws has a cost: two careful players can circle forever. So each move in vanishing has a
+**fifteen-second clock**, counted by the board, not the phone.
+
+- The clock starts when the second player sits down, and restarts after every move.
+- `/state` carries the milliseconds left. The page counts down on its own between polls so the
+  bar moves smoothly, and resynchronises every 0.7 s — the board's number is the real one.
+- When it reaches zero, the board **plays a random free cell for whoever was too slow**, and
+  both phones say so. A random move rather than a lost round, because the usual reason is a
+  phone that dimmed its screen for a moment, and losing a game to that is harsher than a stall
+  deserves. A random move in this variant is usually a bad one — that is punishment enough.
+- The check runs in `loop()` every 200 ms as well as on every request, so the clock runs out on
+  time even if both phones have stopped asking.
+
+Classic has no clock. Nine moves at most, and it ends on its own.
 
 ## Rooms, seats, and leaving
 
@@ -137,7 +168,7 @@ would not be, and that is the case for WebSockets, which the core does not ship 
 | `/rooms` | GET | — | rooms with one player waiting, plus free slots and connected phones |
 | `/create` | POST | `n`, `m` | new room, variant `0` classic / `1` vanishing → `{code, token, seat}` |
 | `/join` | POST | `c`, `n`, `t` | take the empty seat; with a known token, hand the same seat back |
-| `/state` | GET | `c`, `t` | the room as this seat sees it — and the heartbeat |
+| `/state` | GET | `c`, `t` | the room as this seat sees it, with the clock — and the heartbeat |
 | `/move` | POST | `c`, `t`, `i` | play cell `i` (0–8), answer with the new state or a reason |
 | `/again` | POST | `c`, `t` | once a round is over, start the next one |
 | `/leave` | POST | `c`, `t` | give up the seat |
@@ -152,8 +183,8 @@ The page never shows these — its buttons are already disabled whenever a move 
   and a couple of people watching the lobby.
 - **No spectators.** A third phone trying a full room is turned away. Watching is a small
   change — a read-only seat — and is listed below as the first improvement.
-- **No turn clock.** A player can sit on their move forever. The 45-second seat timeout only
-  catches a phone that has *gone*, not one that is sulking.
+- **No clock in classic.** Only vanishing has one, so a player can sit on a classic move for as
+  long as they like. The 45-second seat timeout only catches a phone that has *gone*.
 - **A restart forgets every game.** Rooms live in RAM. The page notices the board no longer
   knows its token and returns to the lobby with a message.
 - **No encryption.** Anyone on `devkit-xo` can see the traffic. It is tic-tac-toe.
@@ -164,22 +195,19 @@ Roughly in order of effort:
 
 1. **Spectators.** A third kind of seat that gets `/state` but cannot move. Put the board on a
    projector and run a tournament from it.
-2. **A turn clock.** Thirty seconds a move, enforced by the board in `sweep()` — on expiry,
-   forfeit the round or play a random legal move. Matters most in vanishing, where stalling is
-   a strategy.
-3. **Play the board.** A solo seat against the chip. Classic tic-tac-toe is small enough for a
+2. **Play the board.** A solo seat against the chip. Classic tic-tac-toe is small enough for a
    full minimax search on every move — 9! positions at most, far fewer in practice — so the
    board would never lose. Vanishing has cycles and no full board, so it needs a depth limit
    and a scoring function instead, which is the interesting version.
-4. **Ultimate tic-tac-toe.** Nine boards in a grid, where your move decides which board your
+3. **Ultimate tic-tac-toe.** Nine boards in a grid, where your move decides which board your
    opponent must play in next. Same room code, same referee, 81 cells instead of 9.
-5. **Bigger boards.** 4×4 or 5×5, four in a row. `LINES` becomes generated rather than written
+4. **Bigger boards.** 4×4 or 5×5, four in a row. `LINES` becomes generated rather than written
    out.
-6. **Push instead of poll.** A WebSocket server — not in the core, so it would break the
+5. **Push instead of poll.** A WebSocket server — not in the core, so it would break the
    book's *nothing to install* rule. Worth it only if latency starts to matter.
-7. **Remember the champions.** A leaderboard by name in NVS (`Preferences`), so it survives a
+6. **Remember the champions.** A leaderboard by name in NVS (`Preferences`), so it survives a
    restart. Names are not accounts, so it is a bit of fun rather than a ranking.
-8. **A second board as a bridge.** Two ESP32s linked by ESP-NOW, each hosting its own WiFi, so
+7. **A second board as a bridge.** Two ESP32s linked by ESP-NOW, each hosting its own WiFi, so
    a game can be played between two rooms out of each other's WiFi range.
 
 ## Running it
@@ -193,24 +221,72 @@ partition is fine. `ui.h` must sit beside the `.ino`.
    code.
 3. X moves first. After each round, either player can tap **play again**.
 
-Serial at 115200 prints the address, the free heap, and the size of one room.
+Serial at 115200 prints the address, the free heap and the size of one room, and then a line
+for every phone that joins, gets an address or leaves, and every request that changes a game.
+When something does not work, that log says which step never happened.
+
+## What the first flash found
+
+Every test on the laptop passed, and the board still failed twice the first time two real
+devices touched it. Both are kept, because neither would have been found any other way.
+
+### The page that lived at Google's address
+
+The phone joined, the page appeared, and **create a room** answered *the board did not
+answer*. The serial log showed the phone's connectivity probe — `GET /generate_204` — and
+then nothing: the button's request never arrived.
+
+The first version served the game *as the answer to that probe*, the way chapter 1 does. So the
+browser believed the page lived at `connectivitycheck.gstatic.com`, and every request the page
+made went to that name. The phone looked the name up through its own secure DNS — not the
+board's catch-all — got Google's real address, and sent the request there, over a WiFi with no
+internet. The board never saw it.
+
+The fix is the standard captive-portal move: anything not asked of `192.168.4.1/` is answered
+with a **redirect** to it. The page now lives at a bare IP address, and no name lookup is
+involved anywhere.
+
+> Chapter 1 has the same pattern and has worked on every phone it met — but it was never
+> tested on one with Private DNS switched on. It probably has this bug too.
+
+### The board that froze on "create a room"
+
+With the redirect in, the log showed `POST /create … -> create requested` — and then
+silence. No answer, no further polls, and a second device could not even load the page. The
+board had not restarted (its clock kept counting), so something in the handler was looping.
+
+It was the room code. `newCode()` keeps drawing codes until it finds one no room is using.
+The first version marked the room *used* and then generated the code **straight into that
+room's own `code` field** — so the uniqueness check found this very room holding this very
+code, every time, and drew again forever. One loop on one core, and the whole web server stops.
+
+The fix is to draw the code into a separate buffer before the slot is marked used. The laptop
+tests had covered the rules but called the rules directly, never `handleCreate()`; they now
+drive every endpoint through a stand-in web server, and creating two rooms in a row is the
+first thing they check.
+
+> **What you learn:** a test that skips the one function you did not suspect proves nothing
+> about it — and an infinite loop on a microcontroller looks exactly like a network fault.
 
 ## Verified, and not
 
 Compiled against arduino-esp32 **3.3.11** for ESP32 Dev Module on the default partition, with
-no warnings from the sketch: **951,928 bytes — 72% of 1.31 MB** of program space, and global
-variables at **14% of RAM**, leaving about 273 KB free. Half of chapter 2's binary, because
-there is only one radio stack linked in — the default partition is fine here.
+no warnings from the sketch: **958,000 bytes — 73% of 1.31 MB** of program space, and global
+variables at **14% of RAM**. Half of chapter 2's binary, because there is only one radio stack
+linked in — the default partition is fine here.
 
-The rules were also tested off the board: `doomed()`, `play()` and the seat sweep compiled on
-a laptop and driven through a win, a refused move on every reason, a full-board draw, a
-vanishing game where the vanished mark would have completed the line (it does not count), the
-three-mark limit, the 60-move draw, and a seat timing out.
+Off the board, every endpoint was driven through a stand-in web server on a laptop: creating
+rooms back to back, the open list, joining by code in either case, a third player turned away,
+a reload landing back in the same seat, a won game and *play again*, all eight slots filling
+and one freeing on *leave*, a vanished mark that would have completed the line (it does not
+count), three hundred vanishing moves with never more than three marks each and no draw, and
+the clock — nothing at 14.9 s, the board moving for the right player at 15.
 
-**Not yet confirmed on hardware:** the whole of play — joining by code and from the list, the
-fade and the vanish on both phones, the seat timeout, reconnecting after a reload, and the
-claim that eight phones polling at 700 ms is comfortable. Those are expectations from chapter
-1's numbers, not measurements, until the board is flashed.
+**Confirmed on hardware:** a phone and a tablet on the board's WiFi, the redirect landing the
+page on `192.168.4.1`, and rooms created and joined.
+
+**Not yet confirmed on hardware:** the move clock and the *next* marker, which were added after
+that test; the seat timeout; and the claim that eight phones polling at 700 ms is comfortable.
 
 ## Sources
 
