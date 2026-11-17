@@ -9,3 +9,6 @@ projects/
 
 # chapters written but not published yet
 drafts/
+
+# the flasher site, built by workbench/build.py (published by CI, never committed)
+site/

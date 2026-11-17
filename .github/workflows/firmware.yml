@@ -1,0 +1,76 @@
+name: Firmware
+
+# Builds every project for every device and publishes the flasher page with the firmware to
+# GitHub Pages, so anyone can put a project on an ESP32 from a browser tab.
+#
+# Binaries are build outputs: they go to Pages, never into the repo. This workflow commits
+# nothing, so it cannot trigger itself or progress.yml.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "chapters/**"
+      - "workbench/**"
+      - ".github/workflows/firmware.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time; a newer push replaces a build still waiting to deploy.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+env:
+  CORE: esp32:esp32@3.3.11
+  INDEX_URL: https://espressif.github.io/arduino-esp32/package_esp32_index.json
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache the Arduino core
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.arduino15
+            ~/.cache/arduino
+          key: arduino-${{ env.CORE }}-v1
+
+      - name: Install arduino-cli
+        run: |
+          # Pinned: the version the sketches are built with locally.
+          curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR=/usr/local/bin sh -s 1.6.0
+          arduino-cli version
+
+      - name: Install the ESP32 core
+        run: |
+          arduino-cli config init --overwrite
+          arduino-cli config set board_manager.additional_urls "$INDEX_URL"
+          arduino-cli core update-index
+          arduino-cli core install "$CORE"
+
+      - name: Build every project for every device
+        run: python3 workbench/build.py site
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="Flash the devkit-diary ESP32 projects straight from your browser — no IDE, nothing to install.">
+<title>ESP32 Flasher · devkit-diary</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <span class="dot"></span>
+  <div>
+    <h1>ESP32 Flasher</h1>
+    <p class="sub">Put any <a href="https://github.com/geekksv/devkit-diary">devkit-diary</a> project on an ESP32
+      from this tab — no Arduino IDE, nothing to install.</p>
+  </div>
+</header>
+
+<div class="banner" id="nosupport" hidden>
+  <b>This browser cannot talk to USB devices.</b>
+  Open this page in desktop <b>Chrome</b>, <b>Edge</b> or <b>Opera</b>. Safari, Firefox and phone
+  browsers do not support Web Serial, which flashing needs.
+</div>
+
+<main class="grid">
+
+  <!-- ── the Tools menu ─────────────────────────────────────────── -->
+  <section class="card tools" aria-label="Board settings">
+    <p class="label">board</p>
+
+    <div class="field">
+      <span class="name">Port</span>
+      <div class="ctl">
+        <button id="pickPort" class="ghost">Select port</button>
+        <span class="value" id="portInfo">none selected</span>
+      </div>
+    </div>
+
+    <div class="field">
+      <span class="name">Device</span>
+      <div class="ctl">
+        <select id="device"></select>
+        <button id="detect" class="ghost small" disabled>Detect</button>
+      </div>
+    </div>
+    <p class="chipinfo" id="chipInfo"></p>
+
+    <div class="field">
+      <span class="name">Upload speed</span>
+      <div class="ctl">
+        <select id="upload">
+          <option value="115200">115200</option>
+          <option value="460800" selected>460800</option>
+          <option value="921600">921600</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="field">
+      <span class="name">Erase flash first</span>
+      <div class="ctl">
+        <label class="switch"><input type="checkbox" id="erase"><span></span></label>
+        <span class="hint">wipes saved data too</span>
+      </div>
+    </div>
+
+    <div class="field">
+      <span class="name">Monitor baud</span>
+      <div class="ctl">
+        <select id="monBaud">
+          <option>9600</option><option>57600</option><option selected>115200</option>
+          <option>230400</option><option>460800</option><option>921600</option>
+        </select>
+      </div>
+    </div>
+
+    <details class="help">
+      <summary>Board won't connect?</summary>
+      <ul>
+        <li>Use a USB cable that carries data — many charging cables do not.</li>
+        <li>No port in the list? Install the driver for your board's USB chip:
+          <a href="https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers" target="_blank" rel="noopener">CP210x</a>
+          or <a href="https://www.wch-ic.com/downloads/CH341SER_ZIP.html" target="_blank" rel="noopener">CH340</a>.</li>
+        <li>Stuck on "connecting"? Hold the <b>BOOT</b> button on the board, press Flash, and let go once writing starts.</li>
+        <li>Close the Arduino IDE's Serial Monitor or anything else that has the port open.</li>
+      </ul>
+    </details>
+  </section>
+
+  <!-- ── the project ────────────────────────────────────────────── -->
+  <section class="card proj" aria-label="Project">
+    <p class="label">project</p>
+    <select id="project" class="big"></select>
+    <div class="about" id="about"></div>
+    <button id="flash" class="primary" disabled>Flash</button>
+    <div class="progress" id="progress" hidden>
+      <div class="stages" id="stages">
+        <span data-s="connect">connecting</span><span data-s="erase">erasing</span>
+        <span data-s="write">writing</span><span data-s="verify">verifying</span><span data-s="reset">resetting</span>
+      </div>
+      <div class="bar"><i id="bar"></i></div>
+      <p class="pmsg" id="pmsg"></p>
+    </div>
+    <p class="next" id="next" hidden></p>
+    <p class="built" id="built"></p>
+  </section>
+
+  <!-- ── the serial monitor ─────────────────────────────────────── -->
+  <section class="card monitor" aria-label="Serial monitor">
+    <div class="mhead">
+      <p class="label">serial monitor <span class="mstate" id="mstate">closed</span></p>
+      <div class="mbtns">
+        <button id="monToggle" class="ghost small" disabled>Open</button>
+        <button id="resetBoard" class="ghost small" disabled>Reset board</button>
+        <label class="chk"><input type="checkbox" id="stamps" checked> time</label>
+        <label class="chk"><input type="checkbox" id="autoscroll" checked> autoscroll</label>
+        <button id="copyLog" class="ghost small">Copy</button>
+        <button id="clearLog" class="ghost small">Clear</button>
+      </div>
+    </div>
+    <pre id="log" class="log" tabindex="0"></pre>
+  </section>
+
+</main>
+
+<footer class="foot">
+  Firmware is built from <a href="https://github.com/geekksv/devkit-diary">the repo</a> by GitHub Actions on every push,
+  and written to your board by <a href="https://github.com/espressif/esptool-js">esptool-js</a> over Web Serial.
+  Nothing leaves your computer except the download of the firmware itself.
+</footer>
+
+</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,59 @@
+{
+  "projects": [
+    {
+      "id": "01-local-chat",
+      "title": "A chat room that needs nothing",
+      "chapter": "chapters/01-a-chat-room-that-needs-nothing",
+      "sketch": "chapters/01-a-chat-room-that-needs-nothing/src/local-chat",
+      "description": "The board makes its own WiFi and everyone in range chats on it. No router, no internet, no account.",
+      "wifi": "devkit-chat",
+      "partition": "default",
+      "after": "Join the WiFi devkit-chat and open http://192.168.4.1"
+    },
+    {
+      "id": "02-remote",
+      "title": "A remote for the whole machine",
+      "chapter": "chapters/02-a-remote-for-the-whole-machine",
+      "sketch": "chapters/02-a-remote-for-the-whole-machine/src/remote",
+      "description": "Pairs to a laptop as a Bluetooth keyboard and serves the buttons to your phone over WiFi: slides, media keys, typing.",
+      "wifi": "devkit-remote",
+      "partition": "huge_app",
+      "after": "Pair devkit-remote from the laptop's Bluetooth settings, then join the WiFi devkit-remote on your phone"
+    },
+    {
+      "id": "03-tic-tac-toe",
+      "title": "Tic-tac-toe with a short memory",
+      "chapter": "chapters/03-tic-tac-toe-with-a-short-memory",
+      "sketch": "chapters/03-tic-tac-toe-with-a-short-memory/src/xo",
+      "description": "Two phones, rooms by code, the board as referee. Classic, or vanishing: three marks each, the oldest disappears.",
+      "wifi": "devkit-xo",
+      "partition": "default",
+      "after": "Join the WiFi devkit-xo and open http://192.168.4.1"
+    },
+    {
+      "id": "04-hide-the-board",
+      "title": "Hide the board",
+      "chapter": "chapters/04-hide-the-board",
+      "sketch": "chapters/04-hide-the-board/src/hide",
+      "description": "A hot-and-cold hunt for the board itself: each phone's meter warms as the board hears it louder. Press BOOT to claim it.",
+      "wifi": "devkit-hide",
+      "partition": "default",
+      "after": "Move the board to a power bank, then join the WiFi devkit-hide and open http://192.168.4.1"
+    },
+    {
+      "id": "05-dots-and-boxes",
+      "title": "Dots and boxes",
+      "chapter": "chapters/05-dots-and-boxes",
+      "sketch": "chapters/05-dots-and-boxes/src/boxes",
+      "description": "Two to four players, 4×4, 6×6 or 9×9. Close a box and you go again; the board keeps score.",
+      "wifi": "devkit-boxes",
+      "partition": "default",
+      "after": "Join the WiFi devkit-boxes and open http://192.168.4.1"
+    }
+  ],
+  "devices": [
+    { "id": "esp32",   "name": "ESP32 (DevKit V1)", "fqbn": "esp32:esp32:esp32",   "chip": "ESP32",    "tested": true },
+    { "id": "esp32s3", "name": "ESP32-S3",          "fqbn": "esp32:esp32:esp32s3", "chip": "ESP32-S3", "tested": false },
+    { "id": "esp32c3", "name": "ESP32-C3",          "fqbn": "esp32:esp32:esp32c3", "chip": "ESP32-C3", "tested": false }
+  ]
+}

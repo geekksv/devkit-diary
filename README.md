@@ -24,6 +24,11 @@
   <img src="assets/progress-dark.svg" width="720" alt="writing progress">
 </picture>
 
+<br><br>
+
+**[⚡ Flash any chapter onto your ESP32 from the browser →](https://geekksv.github.io/devkit-diary/)**
+<br><sub>Plug the board in, pick a project, press Flash. No Arduino IDE, nothing to install — desktop Chrome or Edge.</sub>
+
 </div>
 
 ---
