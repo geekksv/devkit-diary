@@ -137,7 +137,7 @@ function showProject() {
   const meta = document.createElement("div");
   meta.className = "meta";
   const pill = (text, cls) => { const s = document.createElement("span"); s.className = "pill " + (cls || ""); s.textContent = text; meta.appendChild(s); };
-  pill("WiFi " + p.wifi, "mint");
+  pill(p.wifi_setup ? "joins your WiFi" : "WiFi " + p.wifi, "mint");
   if (fw?.ok) pill((fw.size / 1024).toFixed(0) + " KB");
   if (p.partition !== "default") pill("partition: " + p.partition.replace("_", " "));
   if (!device().tested) pill("untested on " + device().name, "warn");
@@ -149,6 +149,7 @@ function showProject() {
   link.className = "pill";
   meta.appendChild(link);
   about.append(h, d, meta);
+  showWifiCard();
   refresh();
 }
 
@@ -162,6 +163,8 @@ function refresh() {
   $("monToggle").disabled = !state.port || state.busy;
   $("monToggle").textContent = state.mon ? "Close" : "Open";
   $("resetBoard").disabled = !state.port || state.busy;
+  $("wifiScan").disabled = !state.port || state.busy;
+  $("wifiGo").disabled = !state.port || state.busy;
   $("device").disabled = state.busy;
   $("project").disabled = state.busy;
   const ms = $("mstate");
@@ -305,6 +308,11 @@ async function flash() {
     progress(100, "Done — " + p.title + " is running.", "ok");
     $("next").textContent = p.after + ".";
     $("next").hidden = false;
+    if (p.wifi_setup) {
+      $("wifiDone").hidden = true;
+      wifiStatus("Next: tell the board your WiFi. Press Scan, pick your network, type its password.");
+      $("wifiCard").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
   } catch (e) {
     progress(100, "Failed: " + e.message, "bad");
     sysLine("flash failed: " + e.message, "err");
@@ -334,22 +342,38 @@ async function startMonitor(reset) {
     sysLine("could not open the port for the monitor: " + e.message, "err");
     return;
   }
-  const decoder = new TextDecoderStream();
-  const closed = port.readable.pipeTo(decoder.writable).catch(() => {});
-  const reader = decoder.readable.getReader();
-  state.mon = { reader, closed };
+  // Raw bytes, not text: Improv packets (WiFi setup) travel on the same line as the log and
+  // are taken out before the rest is decoded.
+  const reader = port.readable.getReader();
+  const decoder = new TextDecoder();
+  const improvIn = new ImprovReader();
+  let skipNewline = false;
+  state.mon = { reader, closed: Promise.resolve() };
   refresh();
   sysLine("monitor open at " + baud + " baud");
   if (reset) await resetBoard(port).catch(() => {});
-  (async () => {
+  state.mon.closed = (async () => {
     try {
       for (;;) {
         const { value, done } = await reader.read();
         if (done) break;
-        if (value) monitorText(value);
+        if (!value) continue;
+        const text = [];
+        for (const b of value) {
+          const r = improvIn.feed(b);
+          for (const t of r.text) {
+            if (skipNewline && t === 10) { skipNewline = false; continue; }
+            skipNewline = false;
+            text.push(t);
+          }
+          if (r.packet) { improvPacket(r.packet); skipNewline = true; }
+        }
+        if (text.length) monitorText(decoder.decode(new Uint8Array(text), { stream: true }));
       }
     } catch (e) {
       sysLine("monitor stopped: " + e.message, "err");
+    } finally {
+      try { reader.releaseLock(); } catch (e) { /* gone */ }
     }
   })();
 }
@@ -360,9 +384,190 @@ async function stopMonitor() {
   state.mon = null;
   try { await m.reader.cancel(); } catch (e) { /* already cancelled */ }
   await m.closed;
+  improvFail("the monitor closed");
   try { await state.port.close(); } catch (e) { /* already closed */ }
   sysLine("monitor closed");
   refresh();
+}
+
+// ── WiFi setup over the cable: Improv Serial (improv-wifi.com) ───────────────
+// Packet: "IMPROV" · version 1 · type · length · data · checksum (low byte of the sum of all
+// bytes before it). The board's side is improv.h in any sketch that needs a network.
+
+const IMPROV = { STATE: 1, ERROR: 2, RPC: 3, RESULT: 4 };
+const RPC = { WIFI: 1, STATE: 2, INFO: 3, SCAN: 4 };
+const HEAD = [73, 77, 80, 82, 79, 86];           // "IMPROV"
+
+class ImprovReader {
+  constructor() { this.buf = []; }
+  // Takes one byte. Returns { text: bytes that are ordinary log, packet: a whole valid packet }.
+  feed(b) {
+    const buf = this.buf;
+    buf.push(b);
+    const n = buf.length;
+    const giveUp = () => {
+      this.buf = [];
+      if (b === HEAD[0] && n > 1) { this.buf = [b]; return { text: buf.slice(0, -1) }; }
+      return { text: buf };
+    };
+    if (n <= 6) return b === HEAD[n - 1] ? { text: [] } : giveUp();
+    if (n === 7 && b !== 1) return giveUp();
+    if (n < 9) return { text: [] };
+    if (buf[8] > 200) return giveUp();
+    if (n < 10 + buf[8]) return { text: [] };
+    let sum = 0;
+    for (let i = 0; i < n - 1; i++) sum = (sum + buf[i]) & 255;
+    this.buf = [];
+    if (sum !== buf[n - 1]) return { text: buf };
+    return { text: [], packet: { type: buf[7], data: buf.slice(9, 9 + buf[8]) } };
+  }
+}
+
+function improvBuild(type, data) {
+  const out = [...HEAD, 1, type, data.length, ...data];
+  let sum = 0;
+  for (const b of out) sum = (sum + b) & 255;
+  out.push(sum);
+  return new Uint8Array(out);
+}
+
+// An RPC result's strings: data = command, length, then length-prefixed strings.
+function improvStrings(data) {
+  const out = [];
+  const dec = new TextDecoder();
+  for (let i = 2; i < 2 + data[1] && i < data.length;) {
+    const l = data[i];
+    out.push(dec.decode(new Uint8Array(data.slice(i + 1, i + 1 + l))));
+    i += 1 + l;
+  }
+  return out;
+}
+
+let improvWait = null;     // { onPacket(p) -> true when done, reject }
+
+function improvPacket(p) {
+  if (improvWait && improvWait.onPacket(p)) improvWait = null;
+}
+function improvFail(why) {
+  if (improvWait) { improvWait.reject(new Error(why)); improvWait = null; }
+}
+
+// Sends one RPC and resolves with whatever `onPacket` decides, or rejects after `ms`.
+async function improvRpc(cmd, payload, onPacket, ms) {
+  if (!state.mon) await startMonitor(false);
+  if (!state.mon) throw new Error("the board's port is not open");
+  const data = [cmd, payload.length, ...payload];
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { improvWait = null; reject(new Error("the board did not answer")); }, ms);
+    improvWait = {
+      onPacket: (p) => {
+        const r = onPacket(p);
+        if (r === undefined) return false;
+        clearTimeout(timer);
+        if (r instanceof Error) reject(r); else resolve(r);
+        return true;
+      },
+      reject: (e) => { clearTimeout(timer); reject(e); },
+    };
+    const w = state.port.writable.getWriter();
+    w.write(improvBuild(IMPROV.RPC, data)).finally(() => w.releaseLock());
+  });
+}
+
+const improvInfo = () => improvRpc(RPC.INFO, [], (p) =>
+  p.type === IMPROV.RESULT && p.data[0] === RPC.INFO ? improvStrings(p.data) : undefined, 2500);
+
+function improvScan() {
+  const nets = [];
+  return improvRpc(RPC.SCAN, [], (p) => {
+    if (p.type !== IMPROV.RESULT || p.data[0] !== RPC.SCAN) return undefined;
+    const s = improvStrings(p.data);
+    if (!s.length) return nets;                       // the empty result ends the list
+    nets.push({ ssid: s[0], rssi: Number(s[1]), secure: s[2] === "YES" });
+    return undefined;
+  }, 20000);
+}
+
+function improvConnect(ssid, pass) {
+  const enc = new TextEncoder();
+  const s = [...enc.encode(ssid)], p = [...enc.encode(pass)];
+  return improvRpc(RPC.WIFI, [s.length, ...s, p.length, ...p], (pk) => {
+    if (pk.type === IMPROV.STATE && pk.data[0] === 3) { wifiStatus("Joining " + ssid + "…"); return undefined; }
+    if (pk.type === IMPROV.ERROR && pk.data[0] === 3) return new Error("it could not join — check the name and password");
+    if (pk.type === IMPROV.ERROR && pk.data[0]) return new Error("the board refused the request (" + pk.data[0] + ")");
+    if (pk.type === IMPROV.RESULT && pk.data[0] === RPC.WIFI) return improvStrings(pk.data)[0] || "";
+    return undefined;
+  }, 45000);
+}
+
+// ── the WiFi card ────────────────────────────────────────────────────────────
+
+function wifiStatus(msg, cls) {
+  $("wifiMsg").textContent = msg;
+  $("wifiMsg").className = "pmsg" + (cls ? " " + cls : "");
+}
+
+function showWifiCard() {
+  const p = project();
+  $("wifiCard").hidden = !(p && p.wifi_setup);
+}
+
+// Finds the board's Improv side. A board that is joining a saved network is busy for up to
+// twenty seconds before it listens, so this keeps asking for a while.
+async function wifiReady() {
+  for (let i = 0; i < 12; i++) {
+    try { const info = await improvInfo(); return info; } catch (e) { await sleep(500); }
+  }
+  throw new Error("the board did not answer — is the project flashed and running?");
+}
+
+async function wifiScan() {
+  $("wifiScan").disabled = true;
+  try {
+    wifiStatus("Asking the board which networks it can see…");
+    await wifiReady();
+    const nets = await improvScan();
+    const list = $("ssids");
+    list.innerHTML = "";
+    const seen = new Set();
+    for (const n of nets.sort((a, b) => b.rssi - a.rssi)) {
+      if (seen.has(n.ssid)) continue;
+      seen.add(n.ssid);
+      const o = document.createElement("option");
+      o.value = n.ssid;
+      o.label = (n.rssi > -60 ? "strong" : n.rssi > -72 ? "good" : "weak") + (n.secure ? "" : " · open");
+      list.appendChild(o);
+    }
+    if (nets.length && !$("ssid").value) $("ssid").value = nets[0].ssid;
+    wifiStatus(nets.length ? "Pick your network and type its password." : "No networks found — type the name.");
+  } catch (e) {
+    wifiStatus(e.message, "bad");
+  } finally {
+    $("wifiScan").disabled = false;
+  }
+}
+
+async function wifiConnect() {
+  const ssid = $("ssid").value.trim(), pass = $("wifiPass").value;
+  if (!ssid) { wifiStatus("Type or pick a network first.", "bad"); return; }
+  $("wifiGo").disabled = true;
+  try {
+    wifiStatus("Talking to the board…");
+    await wifiReady();
+    wifiStatus("Sending the network to the board…");
+    const url = await improvConnect(ssid, pass);
+    const p = project();
+    wifiStatus("Connected. The board restarts into " + (p ? p.title : "the project") + " in a moment.", "ok");
+    $("wifiDone").hidden = false;
+    $("wifiUrl").textContent = url;
+    $("wifiUrl").href = url;
+    $("wifiLocal").textContent = p && p.host ? "http://" + p.host + ".local" : "";
+    $("wifiPass").value = "";
+  } catch (e) {
+    wifiStatus("Not connected: " + e.message + ".", "bad");
+  } finally {
+    $("wifiGo").disabled = false;
+  }
 }
 
 // ── MD5, so esptool can check the flash against the file ─────────────────────
@@ -418,6 +623,9 @@ function wire() {
     else await startMonitor(true);
   };
   $("clearLog").onclick = () => { log.innerHTML = ""; partial = null; };
+  $("wifiScan").onclick = wifiScan;
+  $("wifiGo").onclick = wifiConnect;
+  $("wifiShow").onchange = () => { $("wifiPass").type = $("wifiShow").checked ? "text" : "password"; };
   $("copyLog").onclick = () => navigator.clipboard?.writeText(log.innerText).then(() => sysLine("log copied"));
   // A board unplugged mid-session: forget it rather than leave buttons that cannot work.
   navigator.serial?.addEventListener("disconnect", (e) => {
@@ -435,4 +643,4 @@ function wire() {
 wire();
 loadData().catch((e) => sysLine("could not load the project list: " + e.message, "err"));
 refresh();
-export { md5hex };   // for tests
+export { md5hex, ImprovReader, improvBuild, improvStrings };   // for tests

@@ -66,9 +66,7 @@ manufacturer deleted, a thermometer that cannot measure a room, the ways this bo
 without being asked. Knowing where the floor gives way is worth as much as the rest.
 
 **No contents page, and no count.** What gets built depends on what turns out to be
-interesting once the board is in front of me. [PROJECTS.md](PROJECTS.md) is the list of ideas
-to pick from — what each one does and why, with no code. [HARDWARE.md](HARDWARE.md) is the
-board itself.
+interesting once the board is in front of me. [HARDWARE.md](HARDWARE.md) is the board itself.
 
 ---
 

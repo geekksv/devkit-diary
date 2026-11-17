@@ -30,9 +30,17 @@ h1{font-size:21px;font-weight:800;letter-spacing:-.02em;margin:0}
   border-radius:14px;padding:12px 16px;margin:0 0 16px;font-size:14px}
 
 .grid{display:grid;gap:14px;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);
-  grid-template-areas:"tools proj" "mon mon"}
-.tools{grid-area:tools}.proj{grid-area:proj}.monitor{grid-area:mon}
-@media (max-width:820px){.grid{grid-template-columns:minmax(0,1fr);grid-template-areas:"tools" "proj" "mon"}}
+  grid-template-areas:"tools proj" "wifi wifi" "mon mon"}
+.tools{grid-area:tools}.proj{grid-area:proj}.monitor{grid-area:mon}.wifi{grid-area:wifi}
+@media (max-width:820px){.grid{grid-template-columns:minmax(0,1fr);grid-template-areas:"tools" "proj" "wifi" "mon"}}
+.sub2{color:var(--mute);font-size:13px;margin:0 0 12px;max-width:760px}
+.wrow{display:flex;align-items:center;gap:10px;margin:0 0 10px;flex-wrap:wrap}
+.wl{flex:0 0 80px;color:var(--mute);font-size:13.5px}
+.wrow input[type=password],.wrow input[type=text],.wrow input:not([type]){flex:1;min-width:180px;font:inherit;color:var(--ink);
+  background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:9px 12px}
+.wrow input:focus{outline:2px solid rgba(255,184,108,.6);outline-offset:2px}
+.pmsg.ok{color:var(--mint)}
+.wifi .primary{max-width:260px}
 
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;min-width:0}
 .label{color:var(--mute);font-size:11px;letter-spacing:.09em;text-transform:uppercase;margin:0 0 10px;font-weight:700}

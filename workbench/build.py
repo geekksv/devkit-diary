@@ -66,7 +66,8 @@ def compile_one(sketch, fqbn, outdir, extra):
     run = subprocess.run(cmd, capture_output=True, text=True)
     log = run.stdout + run.stderr
     if run.returncode != 0:
-        first = next((l.strip() for l in log.splitlines() if "error:" in l), "compile failed")
+        first = next((l.strip() for l in log.splitlines()
+                      if "error:" in l or "too big" in l.lower()), "compile failed")
         return None, first
     merged = list(outdir.glob("*.merged.bin"))
     if not merged:

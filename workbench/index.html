@@ -109,6 +109,28 @@
     <p class="built" id="built"></p>
   </section>
 
+  <!-- ── WiFi, for projects that need a real network ────────────── -->
+  <section class="card wifi" id="wifiCard" aria-label="Connect the board to WiFi" hidden>
+    <p class="label">connect the board to your WiFi</p>
+    <p class="sub2">This project needs your home network. The name and password go from this tab to the
+      board over the USB cable — not into the code, not over the internet. The board keeps them.</p>
+    <div class="wrow">
+      <label class="wl" for="ssid">Network</label>
+      <input id="ssid" list="ssids" maxlength="32" autocomplete="off" placeholder="press Scan, or type it">
+      <datalist id="ssids"></datalist>
+      <button id="wifiScan" class="ghost small" disabled>Scan</button>
+    </div>
+    <div class="wrow">
+      <label class="wl" for="wifiPass">Password</label>
+      <input id="wifiPass" type="password" maxlength="64" autocomplete="off">
+      <label class="chk"><input type="checkbox" id="wifiShow"> show</label>
+    </div>
+    <button id="wifiGo" class="primary" disabled>Connect</button>
+    <p class="pmsg" id="wifiMsg"></p>
+    <div class="next" id="wifiDone" hidden>Open <a id="wifiUrl" target="_blank" rel="noopener"></a>
+      <span id="wifiLocal"></span> on any screen on that WiFi.</div>
+  </section>
+
   <!-- ── the serial monitor ─────────────────────────────────────── -->
   <section class="card monitor" aria-label="Serial monitor">
     <div class="mhead">
