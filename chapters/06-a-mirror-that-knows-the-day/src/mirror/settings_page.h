@@ -25,6 +25,13 @@ select{appearance:none}
 </div>
 
 <div class="card">
+  <p class="label">a message on the mirror</p>
+  <textarea id="msg" maxlength="120" rows="2" placeholder="anything — shown under the greeting; leave empty for none"
+    style="resize:vertical;min-height:64px"></textarea>
+  <p class="sub" id="msgn" style="margin-top:6px;text-align:right">0 / 120</p>
+</div>
+
+<div class="card">
   <p class="label">city — for the weather, sunrise and sunset, holidays</p>
   <p class="chosen" id="chosen">none chosen yet</p>
   <div class="row"><input id="q" placeholder="type a city"><button class="narrow" id="find">find</button></div>
@@ -72,6 +79,7 @@ const label=p=>[p.name,p.region,p.country].filter(Boolean).join(', ');
 async function load(){
   const s=await (await fetch('/api/settings',{cache:'no-store'})).json();
   $('name').value=s.name;
+  $('msg').value=s.msg;count();
   if(s.place){place=s.place;$('chosen').textContent=label(s.place)}
   seg('units',s.units);seg('clock',s.clock24?1:0);seg('theme',s.theme);
   $('feed').innerHTML='';
@@ -80,6 +88,8 @@ async function load(){
   $('feed').value=s.feed;$('custom').value=s.custom;$('custom').style.display=s.feed<0?'block':'none';
   $('wifi').textContent='Connected to '+s.ssid+' · signal '+s.rssi+' dBm · '+s.ip;
 }
+function count(){$('msgn').textContent=$('msg').value.length+' / 120'}
+$('msg').oninput=count;
 $('feed').onchange=()=>{$('custom').style.display=$('feed').value==='-1'?'block':'none'};
 
 $('find').onclick=async()=>{
@@ -102,7 +112,7 @@ $('find').onclick=async()=>{
 
 $('save').onclick=async()=>{
   $('ok').textContent='';$('serr').textContent='';
-  let b='name='+enc($('name').value.trim())+'&units='+segVal('units')+'&clock24='+segVal('clock')+
+  let b='name='+enc($('name').value.trim())+'&msg='+enc($('msg').value.trim())+'&units='+segVal('units')+'&clock24='+segVal('clock')+
         '&theme='+segVal('theme')+'&feed='+$('feed').value+'&custom='+enc($('custom').value.trim());
   if(place)b+='&pn='+enc(place.name)+'&pr='+enc(place.region||'')+'&pc='+enc(place.country||'')+
               '&pcc='+enc(place.cc||'')+'&lat='+place.lat+'&lon='+place.lon;

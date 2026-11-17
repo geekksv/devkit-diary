@@ -2,10 +2,9 @@
 
 > **Needs:** one ESP32 DevKit V1, your home WiFi, and any screen with a browser to be the
 > mirror — an old tablet or phone behind two-way glass, or a laptop.
-> **Status:** compiles against the core; the readers for every service are tested on a laptop
-> against their real responses, the WiFi hand-over is tested both ways between the board's code
-> and the flasher's, and the page is rendered at phone, tablet and laptop sizes in both themes
-> (figures below). Not yet flashed.
+> **Status:** flashed from the flasher and running: WiFi handed over through the flasher's card,
+> the mirror on a real screen. The readers, the WiFi hand-over and the page were also tested on a
+> laptop (figures below).
 
 The board joins your home WiFi and becomes the brain of a smart mirror. Every few minutes it
 fetches the weather, the air quality, a handful of headlines, something that happened on this
@@ -44,9 +43,10 @@ board's memory.
 | On this day | [Wikipedia's feed](https://api.wikimedia.org/wiki/Feed_API) | none | at local midnight |
 | Next public holiday | [Nager.Date](https://date.nager.at) | none | twice a day |
 | Greeting, ticking clock, day or night | worked out on the page | — | every second |
+| Your message | the settings page | — | when you change it |
 
 Settings live on the board and are changed from a phone at `http://mirror.local/settings`: your
-name, your city, °C or °F, 24- or 12-hour clock, the headline feed, and the screen — *by the
+name, **a message of your own** — up to 120 characters, shown under the greeting — your city, °C or °F, 24- or 12-hour clock, the headline feed, and the screen — *by the
 sun*, *always black* or *always white*.
 
 ## Getting onto the WiFi — without the password in the code
@@ -167,6 +167,10 @@ scrolls.
   row, the forecast gets a full-width row of its own, and *on this day* moves under the
   greeting.
 
+The colon in the clock blinks with the seconds. It is set from the page's own one-second tick
+rather than a CSS animation, so it still blinks on a screen with *reduce motion* switched on —
+where every animation is turned off, as chapter 5's last-move mark found out.
+
 Tap the screen once for full screen; the cursor hides itself when the mouse is still. The
 **BOOT button** cycles four views on every screen at once: *everything*, *weather* (a large
 forecast), *headlines* (all eight as a list), and *clock* (just the time, large — a night
@@ -179,7 +183,7 @@ light).
 | `/` | GET | — | the mirror page |
 | `/settings` | GET | — | the settings page |
 | `/api/data` | GET | — | everything the mirror shows, ~3 KB — polled every 5 s |
-| `/api/settings` | GET / POST | name, units, clock24, theme, feed, custom, place | read or save settings |
+| `/api/settings` | GET / POST | name, msg, units, clock24, theme, feed, custom, place | read or save settings |
 | `/api/places` | GET | `q` | up to five cities matching a name |
 | `/api/forget-wifi` | POST | — | forget the network and restart into setup |
 
@@ -231,7 +235,7 @@ BOOT press.
 ## Verified, and not
 
 Compiled against arduino-esp32 **3.3.11** for ESP32 Dev Module with no warnings from the sketch:
-**1,227,180 bytes — 93% of the default 1.31 MB**, globals at **17% of RAM**. The
+**1,229,000 bytes — 93% of the default 1.31 MB**, globals at **17% of RAM**. The
 certificate bundle the sketch hands to each connection was checked to be built into the core
 (`_binary_x509_crt_bundle_start`, in `libmbedtls`).
 
@@ -260,9 +264,13 @@ had been switched off, and every local build passed. GitHub's build runs it, and
 one templated function in the sketch: `'F' has not been declared`. The HTTPS helpers now live
 in `net.h`, where that step never looks, which is also where they read best.
 
-**Not yet confirmed on hardware:** all of it on a real board — joining a real WiFi through the
-flasher and through the phone page, HTTPS from the board itself, the free heap with TLS open,
-two cores sharing the data, and `mirror.local` on the screens you have.
+**Confirmed on hardware:** flashed from the flasher, WiFi handed over through its *connect*
+card, and the mirror running on a real screen — HTTPS from the board, the fetcher on its own
+core, the page drawing the data.
+
+**Not yet confirmed on hardware:** the phone setup network (`devkit-mirror-setup`), the
+five-second BOOT reset, the free heap with TLS open, and the custom message and blinking clock,
+which were added after that test.
 
 ## Sources
 

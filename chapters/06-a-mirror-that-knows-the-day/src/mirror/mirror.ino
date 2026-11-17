@@ -58,6 +58,7 @@ const int FEED_COUNT = sizeof(FEEDS) / sizeof(FEEDS[0]);
 
 struct Settings {
   char name[24];
+  char msg[121];               // a line of your own under the greeting; empty = none
   bool hasPlace;
   Place place;
   char units;                  // 'c' or 'f'
@@ -98,6 +99,7 @@ static void loadSettings() {
   Preferences p;
   p.begin("mirror", true);
   p.getString("name", "").toCharArray(S.name, sizeof(S.name));
+  p.getString("msg", "").toCharArray(S.msg, sizeof(S.msg));
   S.hasPlace = p.getBytes("place", &S.place, sizeof(Place)) == sizeof(Place);
   S.units = p.getChar("units", 'c');
   S.clock24 = p.getBool("clock24", true);
@@ -112,6 +114,7 @@ static void saveSettings() {
   Preferences p;
   p.begin("mirror", false);
   p.putString("name", S.name);
+  p.putString("msg", S.msg);
   if (S.hasPlace) p.putBytes("place", &S.place, sizeof(Place));
   p.putChar("units", S.units);
   p.putBool("clock24", S.clock24);
@@ -258,6 +261,7 @@ static void handleData() {
   o += "{\"now\":" + String((uint32_t)time(nullptr));
   o += ",\"off\":" + String(D.wx.ok ? D.wx.offset : 0);
   o += ",\"name\":\"" + uiJson(S.name) + "\"";
+  o += ",\"msg\":\"" + uiJson(S.msg) + "\"";
   o += ",\"place\":" + String(S.hasPlace ? "true" : "false");
   o += ",\"city\":\"" + uiJson(S.place.name) + "\"";
   o += ",\"units\":\"" + String(S.units) + "\"";
@@ -295,7 +299,7 @@ static void handleData() {
 
 static void handleSettingsGet() {
   xSemaphoreTake(lock, portMAX_DELAY);
-  String o = "{\"name\":\"" + uiJson(S.name) + "\",\"units\":\"" + String(S.units) + "\",\"clock24\":" +
+  String o = "{\"name\":\"" + uiJson(S.name) + "\",\"msg\":\"" + uiJson(S.msg) + "\",\"units\":\"" + String(S.units) + "\",\"clock24\":" +
              String(S.clock24 ? "true" : "false") + ",\"theme\":" + String(S.theme) + ",\"feed\":" + String(S.feed) +
              ",\"custom\":\"" + uiJson(S.custom) + "\",\"place\":";
   if (S.hasPlace)
@@ -344,6 +348,11 @@ static void handlePlaces() {
 static void handleSettingsPost() {
   xSemaphoreTake(lock, portMAX_DELAY);
   web.arg("name").substring(0, sizeof(S.name) - 1).toCharArray(S.name, sizeof(S.name));
+  String msg = web.arg("msg");
+  msg.trim();
+  msg.replace("\r", " ");
+  msg.replace("\n", " ");
+  msg.substring(0, sizeof(S.msg) - 1).toCharArray(S.msg, sizeof(S.msg));
   S.units = web.arg("units") == "f" ? 'f' : 'c';
   S.clock24 = web.arg("clock24") != "0";
   S.theme = constrain(web.arg("theme").toInt(), 0, 2);

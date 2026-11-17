@@ -41,6 +41,7 @@ body.idle{cursor:none}
 .clock .date{font-size:max(14px,calc(var(--u)*3.4));font-weight:400}
 .clock .time{display:flex;align-items:flex-start;line-height:1;margin-top:calc(var(--u)*.8)}
 .clock .hm{font-size:max(44px,calc(var(--u)*17));letter-spacing:-.02em}
+.clock .colon{transition:opacity .35s ease}
 .clock .sec{font-size:max(16px,calc(var(--u)*5.5));margin:calc(var(--u)*1.6) 0 0 calc(var(--u)*1)}
 .clock .ampm{font-size:max(14px,calc(var(--u)*3.6));margin:calc(var(--u)*1.6) 0 0 calc(var(--u)*1)}
 .clock .hol{font-size:max(12px,calc(var(--u)*2.5));margin-top:calc(var(--u)*1.6)}
@@ -63,14 +64,16 @@ body.idle{cursor:none}
 .fc td.ic svg{width:max(16px,calc(var(--u)*3.6));height:max(16px,calc(var(--u)*3.6));vertical-align:middle}
 .fc td.n{text-align:right;width:calc(var(--u)*8)}
 
-.mid{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  text-align:center;gap:calc(var(--u)*2)}
-.greet{font-size:max(26px,calc(var(--u)*8));line-height:1.15}
+.mid{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;text-align:center;gap:calc(var(--u)*1.2)}
+.greet{font-size:max(24px,calc(var(--u)*7));line-height:1.15}
+.msg{font-size:max(15px,calc(var(--u)*3.6));line-height:1.3;max-width:86%;overflow-wrap:anywhere}
+.msg:empty{display:none}
 .mid .otd{display:none;font-size:max(14px,calc(var(--u)*3.2));color:var(--dim);max-width:80%;line-height:1.4}
 
 .news{text-align:center;display:flex;flex-direction:column;align-items:center;gap:calc(var(--u)*1)}
 .news .head{font-size:max(15px,calc(var(--u)*3.8));line-height:1.3;max-width:90%;
-  transition:opacity .8s ease;min-height:2.6em}
+  transition:opacity .8s ease;min-height:1.3em}
 .news ol{display:none}
 .foot{margin-top:auto;display:flex;justify-content:space-between;gap:16px;font-size:max(10px,calc(var(--u)*1.8));
   border-top:1px solid var(--rule);padding-top:calc(var(--u)*1.2)}
@@ -116,7 +119,7 @@ body.v3 .clock .hm{font-size:max(64px,calc(var(--u)*30))}
 <div class="top">
   <div class="clock">
     <div class="date dim" id="date">&nbsp;</div>
-    <div class="time"><span class="hm" id="hm">--:--</span><span class="sec faint" id="sec"></span><span class="ampm faint" id="ampm"></span></div>
+    <div class="time"><span class="hm"><span id="hh">--</span><span class="colon" id="colon">:</span><span id="mm">--</span></span><span class="sec faint" id="sec"></span><span class="ampm faint" id="ampm"></span></div>
     <div class="hol faint" id="hol"></div>
   </div>
   <div class="side">
@@ -135,6 +138,7 @@ body.v3 .clock .hm{font-size:max(64px,calc(var(--u)*30))}
 
 <div class="mid">
   <div class="greet" id="greet"></div>
+  <div class="msg" id="msg"></div>
   <div class="otd" id="otd2"></div>
 </div>
 
@@ -198,7 +202,10 @@ function tick(){
   const h=L.getUTCHours(),m=L.getUTCMinutes(),s=L.getUTCSeconds();
   if(synced){
     const h12=S.clock24?pad(h):String((h+11)%12+1);
-    $('hm').textContent=h12+':'+pad(m);
+    $('hh').textContent=h12;$('mm').textContent=pad(m);
+    // The colon blinks with the seconds. Set from here rather than a CSS animation, so it still
+    // blinks on screens with "reduce motion" on, where every animation is switched off.
+    $('colon').style.opacity=s%2?'.2':'1';
     $('sec').textContent=pad(s);
     $('ampm').textContent=S.clock24?'':(h<12?'am':'pm');
     $('date').textContent=DAYS[L.getUTCDay()]+', '+L.getUTCDate()+' '+MONTHS[L.getUTCMonth()];
@@ -230,6 +237,7 @@ function theme(){
 function render(){
   document.body.className=document.body.className.replace(/\bv\d\b/,'v'+S.view);
   $('hinturl').textContent='http://'+S.host+'.local/settings';
+  if($('msg').textContent!==S.msg)$('msg').textContent=S.msg||'';
   // weather
   if(S.wx){
     const [word,kind]=sky(S.wx.c);
