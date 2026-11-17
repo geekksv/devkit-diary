@@ -88,7 +88,7 @@ async function loadData() {
   for (const d of state.meta.devices) {
     const o = document.createElement("option");
     o.value = d.id;
-    o.textContent = d.name + (d.tested ? "" : " — untested");
+    o.textContent = d.name;
     dev.appendChild(o);
   }
   if (state.manifest) {
@@ -224,7 +224,7 @@ function showChip() {
   const match = c.name === want.chip;
   el.className = "chipinfo" + (match ? "" : " warn");
   el.textContent = c.desc + " · " + c.flash + " flash · MAC " + c.mac +
-    (match ? "" : "\nThis is an " + c.name + ", but the device is set to " + want.name + ".");
+    (match ? "" : "\nThis is an " + c.name + ". These projects are built for the " + want.name + " only.");
 }
 
 async function detect() {
@@ -280,8 +280,8 @@ async function flash() {
 
     await withLoader(async (loader) => {
       if (state.chip.name !== d.chip) {
-        throw new Error("the board is an " + state.chip.name + ", not an " + d.name +
-          ". Choose " + state.chip.name + " as the device.");
+        throw new Error("this board is an " + state.chip.name + " — the projects here are built and tested " +
+          "for the " + d.name + " only");
       }
       stage(erase ? "erase" : "write");
       progress(0, erase ? "Erasing the whole flash — this takes a few seconds…" : "Writing…");

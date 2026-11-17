@@ -59,13 +59,11 @@
       "wifi": "your home WiFi",
       "wifi_setup": true,
       "host": "mirror",
-      "partition": "huge_app",
+      "partition": "default",
       "after": "Connect it to your WiFi below, then open http://mirror.local on any screen"
     }
   ],
   "devices": [
-    { "id": "esp32", "name": "ESP32 (DevKit V1)", "fqbn": "esp32:esp32:esp32", "chip": "ESP32", "tested": true },
-    { "id": "esp32s3", "name": "ESP32-S3", "fqbn": "esp32:esp32:esp32s3", "chip": "ESP32-S3", "tested": false },
-    { "id": "esp32c3", "name": "ESP32-C3", "fqbn": "esp32:esp32:esp32c3", "chip": "ESP32-C3", "tested": false }
+    { "id": "esp32", "name": "ESP32 (DevKit V1)", "fqbn": "esp32:esp32:esp32", "chip": "ESP32", "tested": true }
   ]
 }

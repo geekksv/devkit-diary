@@ -107,10 +107,9 @@ against a list of root authorities it trusts, then encrypts the conversation.
 - **One connection at a time.** A TLS session costs roughly 40 KB of RAM while it is open.
   The fetcher and the settings page's city search share one lock, so two never overlap.
 - **It costs flash.** TLS, the HTTP client and `mirror.local` naming together take the sketch
-  to **93% of the default partition** on an ESP32. It fits — but on an ESP32-C3, whose RISC-V
-  code is a little larger, the same sketch is **1,322,523 bytes, 12 KB over**. So the flasher
-  builds it, for every chip, on the **Huge APP** partition (3 MB for the program, no
-  over-the-air update slot — which this sketch never uses), the same trade chapter 2 makes.
+  to **93% of the default partition** — the fullest in the book after chapter 2. It fits; it
+  does not leave much room. If it ever stops fitting, **Huge APP** (3 MB for the program,
+  no over-the-air slot) is the same trade chapter 2 makes.
 
 ## Reading answers bigger than the board
 
@@ -220,8 +219,7 @@ in desktop Chrome or Edge, choose *A mirror that knows the day*, *Flash*, then u
 the board to your WiFi* card that appears.
 
 **From the Arduino IDE:** open `src/mirror/mirror.ino`, choose **ESP32 Dev Module**, flash. The
-default partition fits an ESP32 (93%); **Tools → Partition Scheme → Huge APP** gives it room,
-and is needed on an ESP32-C3. Every `.h` file must sit beside the `.ino`. Then join
+default partition is fine. Every `.h` file must sit beside the `.ino`. Then join
 `devkit-mirror-setup` from a phone to give it your WiFi.
 
 Then, on any screen on the same WiFi, open `http://mirror.local` (or the address on the serial
@@ -233,9 +231,7 @@ BOOT press.
 ## Verified, and not
 
 Compiled against arduino-esp32 **3.3.11** for ESP32 Dev Module with no warnings from the sketch:
-**1,227,184 bytes — 93% of the default 1.31 MB**, globals at **17% of RAM**. Through the
-flasher's build, on Huge APP, it builds for all three chips the flasher offers; the ESP32-C3
-comes to 1,322,523 bytes, 42% of 3 MB. The
+**1,227,180 bytes — 93% of the default 1.31 MB**, globals at **17% of RAM**. The
 certificate bundle the sketch hands to each connection was checked to be built into the core
 (`_binary_x509_crt_bundle_start`, in `libmbedtls`).
 
