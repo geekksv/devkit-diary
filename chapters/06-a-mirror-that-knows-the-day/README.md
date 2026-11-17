@@ -257,6 +257,13 @@ with a password containing spaces, and the board's code read both back exactly.
 both themes and all four views. That found a phone layout where the weather column ran off the
 right edge, which is why the forecast now gets its own row in portrait.
 
+**The first build on GitHub failed**, and no build on this laptop could have caught it. Before
+compiling a `.ino`, the Arduino build writes a declaration for every function in it, using a
+tool (`ctags`) that only ships for Intel machines — so on this Apple-silicon laptop that step
+had been switched off, and every local build passed. GitHub's build runs it, and it mangled the
+one templated function in the sketch: `'F' has not been declared`. The HTTPS helpers now live
+in `net.h`, where that step never looks, which is also where they read best.
+
 **Not yet confirmed on hardware:** all of it on a real board — joining a real WiFi through the
 flasher and through the phone page, HTTPS from the board itself, the free heap with TLS open,
 two cores sharing the data, and `mirror.local` on the screens you have.
