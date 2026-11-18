@@ -49,9 +49,11 @@ def trim(image):
 
     arduino-cli pads the merged image to the whole 4 MB flash with 0xFF — the value erased flash
     already reads as. Most of a 4 MB file is that padding, so it is cut off, keeping the length
-    a whole number of 4 KB flash sectors. The cost is the same as an Arduino IDE upload: the
-    trimmed tail is not rewritten, so saved data there (NVS, SPIFFS) survives a flash unless
-    "erase flash first" is chosen.
+    a whole number of 4 KB flash sectors. The trimmed tail is simply not written.
+
+    Saved settings are a different matter: the NVS partition sits near the start, inside the
+    image, so cutting the tail does not spare it. The flasher page does that, by reading the
+    image's partition table and writing around NVS (keepSettings() in app.js).
     """
     end = len(image.rstrip(b"\xff"))
     end = (end + 4095) // 4096 * 4096

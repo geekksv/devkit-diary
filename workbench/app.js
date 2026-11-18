@@ -276,6 +276,8 @@ async function flash() {
     const data = new Uint8Array(await res.arrayBuffer());
     if (data.length !== fw.size) throw new Error("firmware download was incomplete");
     sysLine("flashing " + p.id + " for " + d.name + " — " + data.length + " bytes");
+    // Everything except the board's saved settings, unless the user asked for a clean slate.
+    const parts = erase ? [{ data, address: 0 }] : keepSettings(data);
     progress(0, "Connecting to the board…");
 
     await withLoader(async (loader) => {
@@ -287,16 +289,19 @@ async function flash() {
       progress(0, erase ? "Erasing the whole flash — this takes a few seconds…" : "Writing…");
       let wrote = false;
       await loader.writeFlash({
-        fileArray: [{ data, address: 0 }],
+        fileArray: parts,
         flashMode: "keep", flashFreq: "keep", flashSize: "keep",
         eraseAll: erase,
         compress: true,
         calculateMD5Hash: md5hex,
+        // Progress across all the parts, not per part: the bar should not restart halfway.
         reportProgress: (i, written, total) => {
           if (!wrote) { wrote = true; stage("write"); }
-          const pct = Math.round((written / total) * 100);
+          const before = parts.slice(0, i).reduce((a, x) => a + x.data.length, 0);
+          const all = parts.reduce((a, x) => a + x.data.length, 0);
+          const pct = Math.round(((before + Math.min(written, total)) / all) * 100);
           progress(pct, "Writing… " + pct + "%");
-          if (written >= total) { stage("verify"); progress(100, "Verifying what was written…"); }
+          if (i === parts.length - 1 && written >= total) { stage("verify"); progress(100, "Verifying what was written…"); }
         },
       });
       stage("reset");
@@ -320,6 +325,42 @@ async function flash() {
       sysLine("hold BOOT on the board, press Flash, and let go once writing starts", "err");
     }
   }
+}
+
+// ── keeping the board's saved settings ───────────────────────────────────────
+// A merged image covers the whole flash from 0x0, including the NVS partition where sketches
+// keep their WiFi password and settings — blank (0xFF) in the image. Written as one piece it
+// would wipe them on every flash. So the image's own partition table (always at 0x8000) is read,
+// and the image is written around every NVS partition, the way the Arduino IDE writes only the
+// bootloader, the table and the app. "Erase flash first" still wipes everything.
+
+const TABLE = 0x8000;
+
+function partitions(img) {
+  const out = [];
+  for (let at = TABLE; at + 32 <= img.length && at < TABLE + 0xC00; at += 32) {
+    if (img[at] !== 0xAA || img[at + 1] !== 0x50) break;     // the end of the table (or its MD5 row)
+    const u32 = (o) => (img[o] | img[o + 1] << 8 | img[o + 2] << 16 | img[o + 3] << 24) >>> 0;
+    let label = "";
+    for (let i = 12; i < 28 && img[at + i]; i++) label += String.fromCharCode(img[at + i]);
+    out.push({ type: img[at + 2], subtype: img[at + 3], offset: u32(at + 4), size: u32(at + 8), label });
+  }
+  return out;
+}
+
+function keepSettings(img) {
+  const nvs = partitions(img).filter((p) => p.type === 0x01 && p.subtype === 0x02)   // data / nvs
+    .sort((a, b) => a.offset - b.offset);
+  if (!nvs.length) return [{ data: img, address: 0 }];
+  const parts = [];
+  let from = 0;
+  for (const n of nvs) {
+    if (n.offset > from) parts.push({ data: img.slice(from, Math.min(n.offset, img.length)), address: from });
+    from = Math.max(from, n.offset + n.size);
+    sysLine("keeping saved settings: " + n.label + " at 0x" + n.offset.toString(16) + ", " + (n.size / 1024) + " KB, not rewritten");
+  }
+  if (from < img.length) parts.push({ data: img.slice(from), address: from });
+  return parts.filter((p) => p.data.length);
 }
 
 // ── the serial monitor ───────────────────────────────────────────────────────
@@ -643,4 +684,4 @@ function wire() {
 wire();
 loadData().catch((e) => sysLine("could not load the project list: " + e.message, "err"));
 refresh();
-export { md5hex, ImprovReader, improvBuild, improvStrings };   // for tests
+export { md5hex, ImprovReader, improvBuild, improvStrings, partitions, keepSettings };   // for tests
