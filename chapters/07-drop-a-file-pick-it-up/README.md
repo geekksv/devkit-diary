@@ -1,9 +1,9 @@
 # 7 · Drop a file, pick it up
 
 > **Needs:** one ESP32 DevKit V1, and two devices with a browser — a laptop and a phone.
-> **Status:** compiles against the core; the pipe is tested on a laptop against real TCP
-> connections, with a 20 MB file and every way a transfer can fail (figures below). Not yet
-> flashed.
+> **Status:** flashed from the flasher and working: a file sent from a phone to a laptop
+> through the board. The pipe is also tested on a laptop against real TCP connections — with a
+> 20 MB file, a 4.4 GB file, and every way a transfer can fail (figures below).
 
 Open the board's page on a laptop and on a phone. Each sees the other in a list of the devices
 here. Pick a file on one, choose the other; it says *accept*, and the file goes across — with
@@ -11,8 +11,8 @@ no cable, no cloud, no account and no app.
 
 **The board never keeps the file.** It is a pipe: it takes a few kilobytes from the sender,
 hands them to the receiver, and takes the next few. So a file can be far bigger than the board's
-whole 4 MB of flash — a 500 MB video goes through as happily as a photo — and nothing is left
-behind afterwards. The only thing the board does keep is short text notes: a link, a code, a
+whole 4 MB of flash — a long video goes through as happily as a photo — and nothing is left
+behind afterwards. (*How* big, honestly, is [below](#how-big-a-file-really).) The only thing the board does keep is short text notes: a link, a code, a
 paragraph you would otherwise email to yourself. Those clear themselves after a day.
 
 On your home WiFi it answers at `http://drop.local`. With no WiFi set up, or none in reach, it
@@ -100,6 +100,27 @@ transfer rather than stuck:
 the sender, out to the receiver — so two transfers at once would only halve each other. A second
 sender is told the board is busy.
 
+## How big a file, really
+
+"Any size" is true of the board, and only of the board. The limits that are left are elsewhere:
+
+- **The board's memory: no limit.** It never holds more than one 4 KB buffer of the file.
+- **Sizes are 64-bit.** The first version counted bytes in 32-bit numbers — the ESP32's natural
+  size — and a file of 4 GB or more would have wrapped round to a small number and broken. A
+  long 4K phone video passes 4 GB easily, so the counts are now 64-bit, including the one place
+  where the bytes left is compared with a buffer size, which on this chip is still 32 bits. A
+  4.4 GB file went through the pipe on a laptop intact (below).
+- **Time.** Every byte crosses the board's single radio twice, so a big file takes a while. As a
+  guide, at 500 KB/s a 100 MB video takes about three and a half minutes, and 1 GB about
+  thirty-five. The real speed on the board is printed after every transfer.
+- **The screen.** A phone whose screen locks may stop its upload or download, and a transfer
+  that stands still for 20 seconds is given up. For anything large, keep the screens on.
+- **The other end's storage**, and the browser: both phones and laptops handle multi-gigabyte
+  downloads, but the space has to be there.
+
+So in practice: photos, documents, screen recordings and videos of a few hundred megabytes go
+across without thinking about it; multi-gigabyte files work, slowly, with the screens kept on.
+
 ## Speed
 
 The file crosses the board's single radio twice, and the board's WiFi is the slow part. Through
@@ -123,6 +144,28 @@ still owed.**
 - **The clock.** Expiry needs the time. On home WiFi the board asks NTP; on its own network
   there is no internet, but every phone that opens the page knows the time exactly, so the page
   sends it and the board sets its clock from the first one.
+
+## With no WiFi at all
+
+The board does not need a router, the internet, or any network but its own — only power. That
+is what `devkit-drop` is for: a train, a classroom, a field, anywhere two devices need to swap a
+file and there is no signal.
+
+1. **Power the board** — a phone charger, a power bank, or a laptop's USB port. On a power bank
+   the whole thing fits in a pocket.
+2. **Wait about twenty seconds.** A board that has a home WiFi saved tries it first; when that
+   network is not there, it gives up and starts its own network, `devkit-drop`, by itself. A
+   board that was never given a WiFi starts it straight away.
+3. **Join `devkit-drop` on both devices.** On a phone:
+   - if it says the network has no internet, choose to **stay connected**;
+   - **turn mobile data off** for the moment — otherwise a phone that decides this WiFi is
+     useless may send the page's requests over mobile data instead, and they never reach the
+     board (chapter 3 met exactly this).
+4. **Open `http://192.168.4.1`** on both — the page often opens by itself. `drop.local` is for
+   home WiFi only; on the board's own network, use the address.
+5. **Send as usual.**
+
+While they are on `devkit-drop`, neither device has the internet. Switch back afterwards.
 
 ## Two networks
 
@@ -162,7 +205,7 @@ Then open the page on two devices on the same network, and send something.
 ## Verified, and not
 
 Compiled against arduino-esp32 **3.3.11** for ESP32 Dev Module with no warnings from the sketch:
-**1,072,770 bytes — 81% of 1.31 MB**, globals at **17% of RAM**.
+**1,073,066 bytes — 81% of 1.31 MB**, globals at **17% of RAM**.
 
 **The pipe, on a laptop:** `pipe.h` itself — not a copy — compiled against stand-ins for the
 Arduino pieces backed by real TCP sockets, and driven with `curl` as sender and receiver:
@@ -178,6 +221,13 @@ Arduino pieces backed by real TCP sockets, and driven with `curl` as sender and 
   once, and the pipe reset;
 - a receiver whose sender never came: given up after the wait, not held.
 
-**Not yet confirmed on hardware:** all of it on a real board and real phones — the speed over
-the board's WiFi, Safari and Chrome on phones accepting a download from the pipe, notes and
-the PIN, and the two-network switch.
+**Then 64-bit sizes:** a **4,400,000,000-byte** file — past the 4 GiB line where 32-bit counts
+wrap — went through the same pipe with the right `Content-Length`, every byte received, and the
+same MD5.
+
+**Confirmed on hardware:** flashed from the flasher, and a file sent from a phone to a laptop
+through the board.
+
+**Not yet measured on hardware:** the speed over the board's WiFi (printed after each
+transfer), a file of several gigabytes, Safari on an iPhone, notes and the PIN, and the
+fallback to `devkit-drop` when the home WiFi is away.

@@ -26,7 +26,7 @@ const uint32_t PIPE_STALL_MS = 20000;       // no bytes moving for this long mid
 
 // Provided by the sketch.
 bool pipeAllowed(const String &offerId, bool sender, const String &token);
-void pipeDescribe(String &name, String &mime, uint32_t &size);
+void pipeDescribe(String &name, String &mime, uint64_t &size);
 void pipeReceiverReady();
 void pipeStarted();
 void pipeFinished(bool ok, const char *why);
@@ -34,10 +34,15 @@ void pipeFinished(bool ok, const char *why);
 static NetworkServer pipeServer(PIPE_PORT);
 static NetworkClient pSender, pReceiver;
 static bool pRunning = false;               // both ends connected, bytes moving
-static uint32_t pSize = 0, pMoved = 0, pSince = 0, pLastByte = 0, pStarted = 0;
+// 64-bit: a file is allowed to be bigger than 4 GB, which a 32-bit count — the ESP32's natural
+// size — would wrap round at. A long phone video passes 4 GB easily.
+static uint64_t pSize = 0, pMoved = 0;
+static uint32_t pSince = 0, pLastByte = 0, pStarted = 0;
 static uint8_t pBuf[4096];
 
-inline uint32_t pipeSent() { return pMoved; }
+inline uint64_t pipeSent() { return pMoved; }
+
+static String u64(uint64_t v) { char b[24]; snprintf(b, sizeof(b), "%llu", (unsigned long long)v); return String(b); }
 inline bool pipeBusy() { return pRunning; }
 
 static const char *CORS =
@@ -62,7 +67,7 @@ static void pipeReset() {
 inline void pipeAbort() { pipeReset(); }
 
 static void pipeFail(const char *why) {
-  Serial.printf("pipe: failed after %u of %u bytes — %s\n", (unsigned)pMoved, (unsigned)pSize, why);
+  Serial.printf("pipe: failed after %llu of %llu bytes — %s\n", (unsigned long long)pMoved, (unsigned long long)pSize, why);
   if (pSender && pSender.connected()) {
     char body[96];
     snprintf(body, sizeof(body), "{\"ok\":false,\"err\":\"%s\"}", why);
@@ -74,7 +79,7 @@ static void pipeFail(const char *why) {
 
 // Reads one request line and its headers, up to the blank line. The body (a sender's file) is
 // left in the socket, untouched.
-static bool readHead(NetworkClient &c, String &method, String &path, String &query, uint32_t &length) {
+static bool readHead(NetworkClient &c, String &method, String &path, String &query, uint64_t &length) {
   String line;
   bool first = true;
   length = 0;
@@ -96,7 +101,7 @@ static bool readHead(NetworkClient &c, String &method, String &path, String &que
     } else if (!line.length()) {
       return true;                          // the blank line: headers done
     } else if (line.substring(0, 15).equalsIgnoreCase("content-length:")) {
-      length = strtoul(line.substring(15).c_str(), NULL, 10);
+      length = strtoull(line.substring(15).c_str(), NULL, 10);
     }
     line = "";
   }
@@ -131,7 +136,7 @@ static String disposition(const String &name) {
 
 static void pipeAccept(NetworkClient c) {
   String method, path, query;
-  uint32_t length;
+  uint64_t length;
   if (!readHead(c, method, path, query, length)) { c.stop(); return; }
   if (method == "OPTIONS") {                // the browser's preflight for an upload with progress
     c.printf("HTTP/1.1 204 No Content\r\n%sContent-Length: 0\r\nConnection: close\r\n\r\n", CORS);
@@ -148,7 +153,7 @@ static void pipeAccept(NetworkClient c) {
     return;
   }
   String name, mime;
-  uint32_t size;
+  uint64_t size;
   pipeDescribe(name, mime, size);
   if (sender && length != size) { pipeReply(c, 400, "Bad Length", "{\"ok\":false,\"err\":\"size\"}"); return; }
   c.setNoDelay(true);
@@ -158,13 +163,13 @@ static void pipeAccept(NetworkClient c) {
 
   if (pSender && pReceiver) {               // both here: open the download and start moving
     pSize = size;
-    pReceiver.printf("HTTP/1.1 200 OK\r\nContent-Type: %s\r\nContent-Length: %u\r\nContent-Disposition: %s\r\n"
+    pReceiver.printf("HTTP/1.1 200 OK\r\nContent-Type: %s\r\nContent-Length: %s\r\nContent-Disposition: %s\r\n"
                      "Cache-Control: no-store\r\nConnection: close\r\n\r\n",
-                     mime.c_str(), (unsigned)size, disposition(name).c_str());
+                     mime.c_str(), u64(size).c_str(), disposition(name).c_str());
     pRunning = true;
     pStarted = pLastByte = millis();
     pipeStarted();
-    Serial.printf("pipe: moving \"%s\", %u bytes\n", name.c_str(), (unsigned)size);
+    Serial.printf("pipe: moving \"%s\", %s bytes\n", name.c_str(), u64(size).c_str());
   }
 }
 
@@ -183,7 +188,9 @@ inline void pipeLoop() {
   while (budget && pMoved < pSize) {
     const int avail = pSender.available();
     if (avail <= 0) break;
-    const size_t want = min((size_t)avail, min(sizeof(pBuf), (size_t)(pSize - pMoved)));
+    // What is left can be more than 4 GB, and size_t is 32 bits here: compare before narrowing.
+    size_t want = min((size_t)avail, sizeof(pBuf));
+    if (pSize - pMoved < want) want = (size_t)(pSize - pMoved);
     const int got = pSender.read(pBuf, want);
     if (got <= 0) break;
     if (pReceiver.write(pBuf, got) != (size_t)got) { pipeFail("the receiver closed the download"); return; }
@@ -193,8 +200,8 @@ inline void pipeLoop() {
   }
   if (pMoved >= pSize) {
     const uint32_t ms = millis() - pStarted;
-    Serial.printf("pipe: done — %u bytes in %u ms (%.0f KB/s)\n", (unsigned)pSize, (unsigned)ms,
-                  ms ? pSize / 1.024 / ms : 0.0);
+    Serial.printf("pipe: done — %s bytes in %u ms (%.0f KB/s)\n", u64(pSize).c_str(), (unsigned)ms,
+                  ms ? (double)pSize / 1.024 / ms : 0.0);
     pReceiver.flush();
     pipeReply(pSender, 200, "OK", "{\"ok\":true}");
     pipeReset();

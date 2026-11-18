@@ -74,7 +74,7 @@ struct Offer {
   char fromName[24];
   char name[96];                // the file's name
   char mime[48];
-  uint32_t size;
+  uint64_t size;                // 64-bit: files may be bigger than 4 GB
   uint32_t at;                  // millis() it was offered
   enum State { OFFERED, ACCEPTED, SENDING, DONE, DECLINED, FAILED } state;
   char why[48];                 // why it failed, for the sender
@@ -274,7 +274,7 @@ static void handleState() {
     if (offer.active && me && (!strcmp(offer.from, me->id) || !strcmp(offer.to, me->id))) {
       o += ",\"offer\":{\"id\":\"" + String(offer.id) + "\",\"role\":\"" + (strcmp(offer.from, me->id) ? "to" : "from") +
            "\",\"state\":\"" + STATE_NAME[offer.state] + "\",\"name\":\"" + uiJson(offer.name) + "\",\"size\":" +
-           String(offer.size) + ",\"sent\":" + String((uint32_t)pipeSent()) + ",\"fromName\":\"" + uiJson(offer.fromName) +
+           u64(offer.size) + ",\"sent\":" + u64(pipeSent()) + ",\"fromName\":\"" + uiJson(offer.fromName) +
            "\",\"why\":\"" + uiJson(offer.why) + "\"}";
     }
     o += ",\"busy\":" + String(offer.active && offer.state < Offer::DONE ? "true" : "false");
@@ -333,11 +333,11 @@ static void handleOffer() {
   if (!offer.name[0]) strcpy(offer.name, "file");
   String m = web.arg("type");
   (m.length() ? m : String("application/octet-stream")).substring(0, sizeof(offer.mime) - 1).toCharArray(offer.mime, sizeof(offer.mime));
-  offer.size = strtoul(web.arg("size").c_str(), NULL, 10);
+  offer.size = strtoull(web.arg("size").c_str(), NULL, 10);
   offer.at = millis();
   offer.state = Offer::OFFERED;
   ver++;
-  Serial.printf("pipe: %s offers \"%s\" (%u bytes) to %s\n", offer.fromName, offer.name, (unsigned)offer.size,
+  Serial.printf("pipe: %s offers \"%s\" (%s bytes) to %s\n", offer.fromName, offer.name, u64(offer.size).c_str(),
                 to->name);
   json("{\"ok\":true,\"id\":\"" + String(offer.id) + "\"}");
 }
@@ -445,7 +445,7 @@ bool pipeAllowed(const String &offerId, bool sender, const String &k) {
 void pipeReceiverReady() {
   if (offer.state == Offer::OFFERED) { offer.state = Offer::ACCEPTED; offer.at = millis(); ver++; }
 }
-void pipeDescribe(String &name, String &mime, uint32_t &size) { name = offer.name; mime = offer.mime; size = offer.size; }
+void pipeDescribe(String &name, String &mime, uint64_t &size) { name = offer.name; mime = offer.mime; size = offer.size; }
 void pipeStarted() { offer.state = Offer::SENDING; ver++; }
 void pipeFinished(bool ok, const char *why) {
   offer.state = ok ? Offer::DONE : Offer::FAILED;
