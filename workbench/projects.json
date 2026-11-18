@@ -61,6 +61,18 @@
       "host": "mirror",
       "partition": "default",
       "after": "Connect it to your WiFi below, then open http://mirror.local on any screen"
+    },
+    {
+      "id": "07-drop",
+      "title": "Drop a file, pick it up",
+      "chapter": "chapters/07-drop-a-file-pick-it-up",
+      "sketch": "chapters/07-drop-a-file-pick-it-up/src/drop",
+      "description": "Send a file of any size from one device to another through the board, which keeps none of it. Plus shared text notes that clear themselves after a day.",
+      "wifi": "devkit-drop",
+      "wifi_setup": true,
+      "host": "drop",
+      "partition": "default",
+      "after": "Open http://drop.local on both devices (or join devkit-drop if you skip the WiFi step)"
     }
   ],
   "devices": [

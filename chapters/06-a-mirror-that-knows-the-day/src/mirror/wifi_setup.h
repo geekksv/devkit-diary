@@ -29,6 +29,11 @@ struct Config {
   const char *apName;      // the setup network
   const char *firmware;    // for Improv "device info"
   const char *version;
+  // false: the board's own network is only for setting up WiFi (the mirror needs the internet,
+  //        so there is nothing else to show there).
+  // true:  the project itself runs on the board's own network too, with the WiFi page moved to
+  //        /setup — for a project that is useful with no internet at all.
+  bool appOnAp;
 };
 
 enum Mode { CONNECTING, ONLINE, PORTAL };
@@ -222,6 +227,11 @@ static void startPortal() {
   WiFi.mode(WIFI_AP_STA);                // STA too, so scans and a test join work
   WiFi.softAP(cfg.apName);
   dns.start(53, "*", WiFi.softAPIP());
+  if (cfg.appOnAp) {
+    // The project serves "/" and everything else; WiFi setup lives at /setup. The sketch adds
+    // its own pages and calls begin() on the server.
+    web->on("/setup", portalPage);
+  }
   web->on("/setup/scan", [] {
     const int n = WiFi.scanNetworks();
     String o = "{\"err\":\"" + uiJson(lastError) + "\",\"nets\":[";
@@ -248,6 +258,11 @@ static void startPortal() {
     web->send(200, "application/json", "{\"ok\":true}");
     restartAt = millis() + 2500;
   });
+  if (cfg.appOnAp) {
+    Serial.printf("wifi: own network \"%s\" is up — open http://%s, WiFi setup at /setup\n", cfg.apName,
+                  WiFi.softAPIP().toString().c_str());
+    return;
+  }
   web->on("/", portalPage);
   web->onNotFound([] {                   // every portal probe lands on the setup page
     if (web->hostHeader() != WiFi.softAPIP().toString()) {
@@ -298,7 +313,7 @@ inline void loop() {
   readSerial();
   if (mode == PORTAL) {
     dns.processNextRequest();
-    web->handleClient();
+    if (!cfg.appOnAp) web->handleClient();     // otherwise the sketch's loop() serves it
   } else if (mode == ONLINE) {
     if (WiFi.status() == WL_CONNECTED) lostAt = 0;
     else if (!lostAt) { lostAt = millis(); Serial.println("wifi: lost the network, reconnecting"); }
