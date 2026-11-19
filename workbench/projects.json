@@ -73,6 +73,16 @@
       "host": "drop",
       "partition": "default",
       "after": "Open http://drop.local on both devices (or join devkit-drop if you skip the WiFi step)"
+    },
+    {
+      "id": "08-sound-of-the-room",
+      "title": "The sound of the room",
+      "chapter": "chapters/08-the-sound-of-the-room",
+      "sketch": "chapters/08-the-sound-of-the-room/src/air",
+      "description": "The board listens to the WiFi around you and a browser turns it into live ambient music: each network a note, the live traffic a shimmer. Listen-only; nothing attached.",
+      "wifi": "devkit-air",
+      "partition": "default",
+      "after": "Join the WiFi devkit-air, open http://192.168.4.1, and press play"
     }
   ],
   "devices": [
