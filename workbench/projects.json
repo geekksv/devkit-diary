@@ -75,14 +75,16 @@
       "after": "Open http://drop.local on both devices (or join devkit-drop if you skip the WiFi step)"
     },
     {
-      "id": "08-sound-of-the-room",
-      "title": "The sound of the room",
-      "chapter": "chapters/08-the-sound-of-the-room",
-      "sketch": "chapters/08-the-sound-of-the-room/src/air",
-      "description": "The board listens to the WiFi around you and a browser turns it into live ambient music: each network a note, the live traffic a shimmer. Listen-only; nothing attached.",
-      "wifi": "devkit-air",
+      "id": "08-ludo",
+      "title": "Ludo",
+      "chapter": "chapters/08-ludo",
+      "sketch": "chapters/08-ludo/src/ludo",
+      "description": "The game everyone knows, for 2-4 phones, refereed by the board. Classic or quick, a turn clock, reaction emojis, and a spectator view. Home WiFi or its own network.",
+      "wifi": "devkit-ludo",
+      "wifi_setup": true,
+      "host": "ludo",
       "partition": "default",
-      "after": "Join the WiFi devkit-air, open http://192.168.4.1, and press play"
+      "after": "Open http://ludo.local on each phone (or join devkit-ludo if you skip the WiFi step)"
     }
   ],
   "devices": [
