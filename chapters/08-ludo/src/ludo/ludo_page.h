@@ -60,8 +60,7 @@ body.game header{display:none}
 .bubble{position:absolute;font-size:30px;animation:pop .35s ease,rise 1.8s ease forwards;pointer-events:none;z-index:4}
 @keyframes pop{from{transform:scale(0)}to{transform:scale(1)}}
 @keyframes rise{to{transform:translateY(-36px);opacity:0}}
-#board g.mv .halo{animation:pulse 1s ease-in-out infinite}
-@keyframes pulse{0%,100%{opacity:.35;stroke-width:.1}50%{opacity:1;stroke-width:.26}}
+#board g.mv .halo{stroke-width:.2}
 
 .stage{display:flex;align-items:center;gap:14px;margin:12px 0 0;min-height:76px}
 .dice{width:68px;height:68px;border-radius:16px;flex:none;position:relative;cursor:default;
@@ -133,8 +132,8 @@ const post=(u,b)=>fetch(u,{method:'POST',headers:{'Content-Type':'application/x-
 const get=u=>fetch(u,{cache:'no-store'}).then(r=>r.json());
 const enc=encodeURIComponent;
 const NS='http://www.w3.org/2000/svg';
-const COL=['#ff5d6c','#2fd6a6','#ffb020','#9d7bff'];
-const DK=['#b32a38','#167a5c','#b37200','#5a3fb3'];
+const COL=['#e8392b','#1ca84f','#f4c016','#2a7ade'];
+const DK=['#9e2017','#0f7334','#b08a00','#17508f'];
 const EMO=['😂','🔥','😮','😎','😭','👏','🎲','💀'];
 let code='',token='',mode=0,me=-1,timer=null,last=null,busy=false,lastEmojiAt=0,lastDie=-1;
 
@@ -147,8 +146,8 @@ const SAFE=[0,8,13,21,26,34,39,47];
 const HOME=[[[1,7],[2,7],[3,7],[4,7],[5,7]],[[7,1],[7,2],[7,3],[7,4],[7,5]],
             [[13,7],[12,7],[11,7],[10,7],[9,7]],[[7,13],[7,12],[7,11],[7,10],[7,9]]];
 const CENTER=[[6.0,7],[7,6.0],[8.0,7],[7,8.0]];
-const BASE=[[[1.5,1.5],[3.5,1.5],[1.5,3.5],[3.5,3.5]],[[10.5,1.5],[12.5,1.5],[10.5,3.5],[12.5,3.5]],
-            [[10.5,10.5],[12.5,10.5],[10.5,12.5],[12.5,12.5]],[[1.5,10.5],[3.5,10.5],[1.5,12.5],[3.5,12.5]]];
+const BASE=[[[2,2],[4,2],[2,4],[4,4]],[[11,2],[13,2],[11,4],[13,4]],
+            [[11,11],[13,11],[11,13],[13,13]],[[2,11],[4,11],[2,13],[4,13]]];
 const el=(t,a)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);return e};
 function cellCenter(seat,prog,tokenIdx){
   if(prog===0)return BASE[seat][tokenIdx];
@@ -160,36 +159,35 @@ function cellCenter(seat,prog,tokenIdx){
 let tokenEls=[];
 function buildBoard(){
   const svg=$('board');svg.innerHTML='';
-  svg.appendChild(el('rect',{x:-0.3,y:-0.3,width:15.6,height:15.6,rx:1.2,fill:'#101624'}));
+  svg.appendChild(el('rect',{x:-0.3,y:-0.3,width:15.6,height:15.6,rx:0.6,fill:'#ffffff'}));
   const corners=[[0,0],[9,0],[9,9],[0,9]];
   for(let s=0;s<4;s++){const[c,r]=corners[s];
-    svg.appendChild(el('rect',{x:c,y:r,width:6,height:6,rx:1.4,fill:COL[s],'fill-opacity':0.22,stroke:COL[s],'stroke-opacity':0.6,'stroke-width':0.14}));
-    svg.appendChild(el('rect',{x:c+0.9,y:r+0.9,width:4.2,height:4.2,rx:0.8,fill:'#0b0f1a'}));
-    for(const[px,py]of BASE[s])svg.appendChild(el('circle',{cx:px,cy:py,r:0.5,fill:'none',stroke:COL[s],'stroke-opacity':0.4,'stroke-width':0.06}));
+    svg.appendChild(el('rect',{x:c,y:r,width:6,height:6,rx:0.3,fill:COL[s]}));
+    svg.appendChild(el('rect',{x:c+0.85,y:r+0.85,width:4.3,height:4.3,rx:0.4,fill:'#ffffff'}));
+    for(const[px,py]of BASE[s])svg.appendChild(el('circle',{cx:px,cy:py,r:0.52,fill:'none',stroke:COL[s],'stroke-opacity':0.5,'stroke-width':0.12}));
   }
   for(let i=0;i<52;i++){const[x,y]=RING[i];const owner=START.indexOf(i);const star=SAFE.includes(i)&&owner<0;
-    svg.appendChild(el('rect',{x:x+0.05,y:y+0.05,width:0.9,height:0.9,rx:0.2,
-      fill:owner>=0?COL[owner]:'#19202f','fill-opacity':owner>=0?0.92:1,stroke:'#28324a','stroke-width':0.05}));
-    if(star){const t=el('text',{x:x+0.5,y:y+0.74,'text-anchor':'middle','font-size':0.62,fill:'#4a5674'});t.textContent='★';svg.appendChild(t)}
+    svg.appendChild(el('rect',{x,y,width:1,height:1,fill:owner>=0?COL[owner]:'#ffffff',stroke:'#c7cedb','stroke-width':0.045}));
+    if(star){const t=el('text',{x:x+0.5,y:y+0.77,'text-anchor':'middle','font-size':0.68,fill:'#9098a8'});t.textContent='\u2605';svg.appendChild(t)}
   }
   for(let s=0;s<4;s++)for(const[x,y]of HOME[s])
-    svg.appendChild(el('rect',{x:x+0.05,y:y+0.05,width:0.9,height:0.9,rx:0.2,fill:COL[s],'fill-opacity':0.88}));
-  const C='7,7';const tri=[['6,6','8,6'],['8,6','8,8'],['8,8','6,8'],['6,8','6,6']];
-  for(let s=0;s<4;s++)svg.appendChild(el('polygon',{points:C+' '+tri[s][0]+' '+tri[s][1],fill:COL[s],'fill-opacity':0.9}));
-  const grad=el('radialGradient',{id:'gloss',cx:'0.35',cy:'0.3',r:'0.8'});
-  grad.appendChild(el('stop',{offset:'0','stop-color':'#ffffff','stop-opacity':'0.55'}));
-  grad.appendChild(el('stop',{offset:'0.5','stop-color':'#ffffff','stop-opacity':'0'}));
-  svg.appendChild(grad);
+    svg.appendChild(el('rect',{x,y,width:1,height:1,fill:COL[s],stroke:'#ffffff','stroke-width':0.06}));
+  // direction arrows into each home column, in the player's colour
+  const arrows=[['0.2,7.15 0.2,7.85 0.85,7.5',0],['6.15,0.2 6.85,0.2 6.5,0.85',1],['14.8,7.15 14.8,7.85 14.15,7.5',2],['6.15,14.8 6.85,14.8 6.5,14.15',3]];
+  for(const[pts,s]of arrows)svg.appendChild(el('polygon',{points:pts,fill:COL[s]}));
+  svg.appendChild(el('polygon',{points:'7,7 6,6 6,8',fill:COL[0]}));
+  svg.appendChild(el('polygon',{points:'7,7 6,6 8,6',fill:COL[1]}));
+  svg.appendChild(el('polygon',{points:'7,7 8,6 8,8',fill:COL[2]}));
+  svg.appendChild(el('polygon',{points:'7,7 6,8 8,8',fill:COL[3]}));
   tokenEls=[];
   for(let s=0;s<4;s++){tokenEls[s]=[];for(let t=0;t<4;t++){
     const g=el('g',{});
-    const halo=el('circle',{r:0.5,fill:'none',stroke:'#ffe06a','stroke-width':0.1,opacity:0,class:'halo'});
-    const base=el('circle',{r:0.44,fill:DK[s],stroke:'#0b0f1a','stroke-width':0.07});
-    const top=el('circle',{r:0.33,fill:COL[s]});
-    const gl=el('circle',{r:0.33,fill:'url(#gloss)'});
-    g.append(halo,base,top,gl);g.style.cursor='pointer';
+    const halo=el('circle',{r:0.52,fill:'none',stroke:'#ffd21a','stroke-width':0.16,opacity:0});
+    const body=el('circle',{r:0.4,fill:COL[s],stroke:'#141a28','stroke-width':0.09});
+    const inner=el('circle',{r:0.19,fill:'none',stroke:DK[s],'stroke-width':0.13});
+    g.append(halo,body,inner);g.style.cursor='pointer';
     g.addEventListener('click',()=>tapToken(s,t));
-    svg.appendChild(g);tokenEls[s][t]={g,halo,top,base};
+    svg.appendChild(g);tokenEls[s][t]={g,halo};
   }}
 }
 function tapToken(s,t){
@@ -206,7 +204,7 @@ function place(d){
     let [x,y]=cellCenter(s,prog,t);
     const key=prog>=1&&prog<=51?('r'+((START[s]+prog-1)%52)):(prog===57?'c'+s:'');
     if(key){const n=stack[key]||0;stack[key]=n+1;x+=(n%2)*0.3-0.15;y+=(n>1?0.3:0)-0.08}
-    te.g.setAttribute('transform','translate('+x+' '+y+') scale('+(prog>=52?0.82:1)+')');
+    te.g.setAttribute('transform','translate('+x+' '+y+') scale('+(prog>=52?0.84:1)+')');
     const movable=me===s&&d.phase===1&&d.turn===me&&d.gphase===2&&(d.movable||[]).includes(t);
     te.g.setAttribute('class',movable?'mv':'');
     te.halo.setAttribute('opacity',movable?1:0);
