@@ -118,6 +118,9 @@ tapping.
 - **Tokens hop square by square** along the track, around corners, instead of sliding across the
   board. Tokens you can move get a ring; two on one square sit side by side; finished tokens line up
   in their colour's triangle in the centre.
+- **Two players sit across the board** — red and yellow, or green and blue — never side by side,
+  so each has a clear half. The second to join takes the colour opposite the host, and if two
+  players end up next to each other anyway, the board moves one across when the game starts.
 - **Only the seated colours have pieces.** In a two-player game the other two bases stay empty.
 
 ## Reactions, and watching
@@ -187,7 +190,7 @@ Then open the page on two to four phones, create a room, and start. Put it on a 
 ## Verified, and not
 
 Compiled against arduino-esp32 **3.3.11** for ESP32 Dev Module on the default partition, with no
-warnings from the sketch: **1,017,640 bytes — 77% of 1.31 MB**, globals at **15% of RAM**.
+warnings from the sketch: **1,017,876 bytes — 77% of 1.31 MB**, globals at **15% of RAM**.
 
 **The rule engine**, on a laptop, is where the real checking is. First the rules one at a time:
 a six needed to leave base, a capture sending an opponent home, a safe star and a two-token

@@ -70,6 +70,23 @@ static int hostOf(const Room &r) {
   for (int s = 0; s < LUDO_SEATS; s++) if (r.tok[s]) return s;
   return -1;
 }
+
+// Two players sit on opposite colours (red and yellow, or green and blue), the way Ludo is played:
+// each gets a clear half of the board instead of sharing a corner. If the two are side by side,
+// the second moves across — token, name and score go with them, and their phone follows by token.
+static void seatAcross(Room &r) {
+  if (seated(r) != 2) return;
+  const int h = hostOf(r);
+  int o = -1;
+  for (int s = 0; s < LUDO_SEATS; s++) if (r.tok[s] && s != h) o = s;
+  const int to = (h + 2) % LUDO_SEATS;
+  if (o == to) return;
+  r.tok[to] = r.tok[o];   r.tok[o] = 0;
+  memcpy(r.name[to], r.name[o], sizeof r.name[o]); r.name[o][0] = 0;
+  r.seen[to] = r.seen[o];
+  r.wins[to] = r.wins[o]; r.wins[o] = 0;
+  if (r.emojiSeat == o) r.emojiSeat = -1;
+}
 static bool activeMask(const Room &r, bool out[LUDO_SEATS]) {
   int n = 0;
   for (int s = 0; s < LUDO_SEATS; s++) { out[s] = r.tok[s] != 0; if (out[s]) n++; }
@@ -309,7 +326,8 @@ static void handleJoin() {
   char name[NAME_LEN + 1]; cleanName(web.arg("n"), name);
   if (!name[0]) return fail("name");
   int s = -1;
-  for (int i = 0; i < LUDO_SEATS; i++) if (!r->tok[i]) { s = i; break; }
+  if (seated(*r) == 1) { const int across = (hostOf(*r) + 2) % LUDO_SEATS; if (!r->tok[across]) s = across; }
+  if (s < 0) for (int i = 0; i < LUDO_SEATS; i++) if (!r->tok[i]) { s = i; break; }
   if (s < 0) return fail("busy");
   seat(*r, s, name);
   sendSeat(*r, s, r->tok[s]);
@@ -347,8 +365,9 @@ static void handleStart() {
   if (r->phase != 0) return fail("started");
   if (s != hostOf(*r)) return fail("host");
   if (seated(*r) < 2) return fail("alone");
+  seatAcross(*r);
   bool act[LUDO_SEATS]; activeMask(*r, act);
-  ludoBegin(r->g, r->mode, act, s);      // the host opens
+  ludoBegin(r->g, r->mode, act, s);      // the host opens (the host never moves seat)
   r->phase = 1; r->first = s; r->turnAt = millis(); r->autoed = false;
   r->rollVal = 0; r->rollSeat = -1; r->rollId++; r->autoAt = 0; r->ver++;
   sendState(*r, s);
@@ -379,6 +398,8 @@ static void handleAgain() {
   if (!r) return;
   if (r->phase != 2) return fail("playing");
   if (seated(*r) < 2) return fail("alone");
+  seatAcross(*r);
+  s = seatOf(*r, argToken());            // the caller may have moved across
   bool act[LUDO_SEATS]; activeMask(*r, act);
   const int opener = ludoNextSeat(r->g, r->first >= 0 && r->tok[r->first] ? r->first : hostOf(*r));
   ludoBegin(r->g, r->mode, act, opener);
