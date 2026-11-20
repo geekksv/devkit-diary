@@ -1,0 +1,581 @@
+#!/usr/bin/env python3
+"""The pet, on this computer — devkit-diary, chapter 9.
+
+A small always-on-top window, the size of the pet, that walks along the bottom of the screen
+over whatever is open. The pet itself lives on the ESP32: this helper checks in about once a
+second, and the board says whether the pet is here, how it is feeling, and when it has just
+walked in from another computer. When it walks off the edge of this screen, the helper tells
+the board, and the pet turns up on the next computer.
+
+Installed and started by one command from the board (http://pet.local); after that it starts by
+itself at login. Needs Python 3.9+ and PyQt6. Click the pet to stroke it, drag it to move it,
+right-click for more.
+"""
+import json
+import math
+import os
+import queue
+import random
+import re
+import socket
+import sys
+import threading
+import time
+import urllib.parse
+import urllib.request
+
+from PyQt6.QtCore import QPoint, QRectF, Qt, QTimer, QUrl
+from PyQt6.QtGui import (QAction, QBrush, QColor, QDesktopServices, QFont, QLinearGradient, QPainter,
+                         QPainterPath, QPen)
+from PyQt6.QtWidgets import QApplication, QMenu, QWidget
+
+HOME = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"),
+                    "devkit-pet" if os.name == "nt" else ".devkit-pet")
+HEAD = 30                       # room above the pet for hearts and bubbles
+SIZE = 120                      # how tall the pet stands on screen, px — the phone page can change it
+WALK = 0.5                      # walking speed, in pet-widths per second
+RUN = 1.6                       # when it's been called away
+# how long it stays on a screen before wandering off to another (seconds, min,max)
+ROAM = tuple(float(v) for v in os.environ.get("DEVKIT_PET_ROAM", "70,200").split(","))
+
+# ── the pets, as smooth shapes and how each part moves (shared with the phone page; art.py) ──
+RIG = json.loads(r'''{"box":[200,140],"pets":{"cat":{"walk":{"groups":{"all":[{"ty":[1.2,0.31,0]}],"head":[{"ty":[1.0,0.31,1.2]}]},"parts":[{"d":"M 52 80 C 34 80, 20 66, 20 44 C 20 36, 30 34, 31 41 C 31 58, 40 70, 54 72 Z","stroke":"#8a4a1d","sw":1.4,"pivot":[52,78],"anim":[{"rot":[9,1.8,0]}],"fill":{"lg":[20,40,54,80,[[0.0,"#c2672a"],[1.0,"#ec9a4e"]]]}},{"d":"M 22 50 Q 27 50 30 46","stroke":"#c2672a","sw":2.4,"cap":1,"pivot":[52,78],"anim":[{"rot":[9,1.8,0]}]},{"d":"M 26 62 Q 31 61 33 56","stroke":"#c2672a","sw":2.4,"cap":1,"pivot":[52,78],"anim":[{"rot":[9,1.8,0]}]},{"d":"M 120 90 C 120 111.45, 121.68 117, 121.68 125 Q 121.68 129 126 129 Q 130.32 129 130.32 125 C 130.32 117, 132 111.45, 132 90 Z","stroke":"#8a4a1d","sw":1.4,"pivot":[126,92],"anim":[{"rot":[22,0.62,3.141592653589793]}],"fill":"#cf7a36"},{"e":[127.5,126.4,6.52,3.5],"stroke":"#8a4a1d","sw":0.9,"pivot":[126,92],"anim":[{"rot":[22,0.62,3.141592653589793]}],"fill":"#fbe3c4"},{"d":"M 66.84 96 C 64.84 106, 61.84 112, 62.84 116 C 63.84 121, 66.84 125, 67.84 126 Q 67.84 129 73 129 Q 77.16 129 77.16 125 C 76.16 118, 77.16 110, 79.16 98 Z","stroke":"#8a4a1d","sw":1.4,"pivot":[74,86],"anim":[{"rot":[18,0.62,0]}],"fill":"#cf7a36"},{"e":[74,126.4,6.76,3.5],"stroke":"#8a4a1d","sw":0.9,"pivot":[74,86],"anim":[{"rot":[18,0.62,0]}],"fill":"#fbe3c4"},{"e":[74,91,12.35,14.95],"stroke":"#8a4a1d","sw":1.4,"pivot":[74,86],"anim":[{"rot":[18,0.62,0]}],"fill":"#cf7a36"},{"d":"M 46 84 C 46 63, 72 57, 100 58 C 128 59, 150 63, 151 83 C 152 101, 135 108, 100 108 C 70 108, 46 104, 46 84 Z","stroke":"#8a4a1d","sw":1.4,"fill":{"lg":[0,58,0,108,[[0.0,"#e0853a"],[1.0,"#ec9a4e"]]]}},{"d":"M 72 104 C 90 110, 118 110, 136 101 C 124 106, 90 107, 72 104 Z","fill":"#fbe3c4"},{"d":"M 82 60 Q 86 67 83 73","stroke":"#c2672a","sw":3.2,"cap":1},{"d":"M 98 59 Q 102 67 99 74","stroke":"#c2672a","sw":3.2,"cap":1},{"d":"M 114 60 Q 118 67 115 73","stroke":"#c2672a","sw":3.2,"cap":1},{"e":[141,86,12,17],"fill":"#fbe3c4"},{"d":"M 52.52 94 C 50.52 104, 47.52 112, 48.52 116 C 49.52 121, 52.52 125, 53.52 126 Q 53.52 129 59 129 Q 63.48 129 63.48 125 C 62.48 118, 63.48 110, 65.48 96 Z","stroke":"#8a4a1d","sw":1.4,"pivot":[60,84],"anim":[{"rot":[18,0.62,3.141592653589793]}],"fill":"#ec9a4e"},{"e":[60,126.4,7.08,3.5],"stroke":"#8a4a1d","sw":0.9,"pivot":[60,84],"anim":[{"rot":[18,0.62,3.141592653589793]}],"fill":"#fbe3c4"},{"e":[60,89,13.3,16.1],"stroke":"#8a4a1d","sw":1.4,"pivot":[60,84],"anim":[{"rot":[18,0.62,3.141592653589793]}],"fill":"#ec9a4e"},{"d":"M 131.75 92 C 131.75 112.35, 133.5 117, 133.5 125 Q 133.5 129 138 129 Q 142.5 129 142.5 125 C 142.5 117, 144.25 112.35, 144.25 92 Z","stroke":"#8a4a1d","sw":1.4,"pivot":[138,94],"anim":[{"rot":[22,0.62,0]}],"fill":"#ec9a4e"},{"e":[139.5,126.4,6.7,3.5],"stroke":"#8a4a1d","sw":0.9,"pivot":[138,94],"anim":[{"rot":[22,0.62,0]}],"fill":"#fbe3c4"},{"d":"M 141 48 L 139 25 L 156 39 Z","stroke":"#8a4a1d","sw":1.4,"g":"head","fill":"#ec9a4e"},{"d":"M 163 39 L 179 24 L 180 48 Z","stroke":"#8a4a1d","sw":1.4,"g":"head","fill":"#ec9a4e"},{"d":"M 143 45 L 142 31 L 152 40 Z","g":"head","fill":"#f3a7a2"},{"d":"M 166 40 L 176 30 L 177 45 Z","g":"head","fill":"#f3a7a2"},{"e":[160,56,24,21],"stroke":"#8a4a1d","sw":1.4,"g":"head","fill":{"lg":[160,35,160,77,[[0.0,"#e0853a"],[1.0,"#ec9a4e"]]]}},{"d":"M 154 36 Q 155 43 157 46","stroke":"#c2672a","sw":2.2,"cap":1,"g":"head"},{"d":"M 160 35 L 160 45","stroke":"#c2672a","sw":2.2,"cap":1,"g":"head"},{"d":"M 166 36 Q 165 43 163 46","stroke":"#c2672a","sw":2.2,"cap":1,"g":"head"},{"e":[153,64,9,7],"g":"head","fill":"#fbe3c4"},{"e":[167,64,9,7],"g":"head","fill":"#fbe3c4"},{"e":[151,55,5.2,5.8],"stroke":"#8a4a1d","sw":1,"g":"head","pivot":[151,55],"anim":[{"blink":[4.6,0]}],"fill":"#8db63b"},{"e":[151.4,55,1.8,4.6],"g":"head","pivot":[151,55],"anim":[{"blink":[4.6,0]}],"fill":"#1b1b1b"},{"e":[152.7,52.8,1.3,1.3],"g":"head","pivot":[151,55],"anim":[{"blink":[4.6,0]}],"fill":"#ffffff"},{"e":[169,55,5.2,5.8],"stroke":"#8a4a1d","sw":1,"g":"head","pivot":[169,55],"anim":[{"blink":[4.6,0]}],"fill":"#8db63b"},{"e":[169.4,55,1.8,4.6],"g":"head","pivot":[169,55],"anim":[{"blink":[4.6,0]}],"fill":"#1b1b1b"},{"e":[170.7,52.8,1.3,1.3],"g":"head","pivot":[169,55],"anim":[{"blink":[4.6,0]}],"fill":"#ffffff"},{"d":"M 157 60 L 163 60 L 160 63.5 Z","g":"head","fill":"#e9837f"},{"d":"M 160 63.5 Q 159 67 155 66.5 M 160 63.5 Q 161 67 165 66.5","stroke":"#8a4a1d","sw":1.2,"cap":1,"g":"head"},{"d":"M 148 63 L 130 59 M 148 66 L 130 67 M 172 63 L 190 59 M 172 66 L 190 67","stroke":"#ffffff","sw":0.9,"cap":1,"g":"head","alpha":0.85}]},"sit":{"groups":{"all":[],"body":[{"sy":[0.012,3.2,0]}],"head":[{"ty":[0.8,3.2,0.6]}]},"parts":[{"d":"M 72 129 C 58 110, 66 80, 94 68 C 116 60, 134 76, 133 98 C 133 118, 124 129, 110 129 Z","stroke":"#8a4a1d","sw":1.4,"g":"body","fill":{"lg":[0,66,0,129,[[0.0,"#e0853a"],[1.0,"#ec9a4e"]]]}},{"e":[118,96,13,20],"g":"body","fill":"#fbe3c4"},{"d":"M 80 80 Q 86 86 84 93","stroke":"#c2672a","sw":3.2,"cap":1,"g":"body"},{"d":"M 76 95 Q 83 100 81 107","stroke":"#c2672a","sw":3.2,"cap":1,"g":"body"},{"e":[86,112,25,17],"stroke":"#8a4a1d","sw":1.4,"g":"body","fill":{"lg":[0,95,0,129,[[0.0,"#ec9a4e"],[1.0,"#e0853a"]]]}},{"d":"M 106.5 98 C 106.5 115.05, 108.04 117, 108.04 125 Q 108.04 129 112 129 Q 115.96 129 115.96 125 C 115.96 117, 117.5 115.05, 117.5 98 Z","stroke":"#8a4a1d","sw":1.4,"pivot":[112,100],"fill":"#cf7a36"},{"e":[113.5,126.4,6.16,3.5],"stroke":"#8a4a1d","sw":0.9,"pivot":[112,100],"fill":"#fbe3c4"},{"d":"M 118.25 98 C 118.25 115.05, 119.86 117, 119.86 125 Q 119.86 129 124 129 Q 128.14 129 128.14 125 C 128.14 117, 129.75 115.05, 129.75 98 Z","stroke":"#8a4a1d","sw":1.4,"pivot":[124,100],"fill":"#ec9a4e"},{"e":[125.5,126.4,6.34,3.5],"stroke":"#8a4a1d","sw":0.9,"pivot":[124,100],"fill":"#fbe3c4"},{"d":"M 66 124 C 86 133, 126 134, 142 125 C 147 121, 144 115, 139 118 C 126 126, 92 127, 72 118 Z","stroke":"#8a4a1d","sw":1.3,"pivot":[70,122],"anim":[{"rot":[1.5,2.6,0]}],"fill":{"lg":[66,120,146,120,[[0.0,"#ec9a4e"],[1.0,"#c2672a"]]]}},{"d":"M 128 124 Q 131 128 129 131","stroke":"#c2672a","sw":2.2,"cap":1,"pivot":[70,122],"anim":[{"rot":[1.5,2.6,0]}]},{"d":"M 99 42 L 97 19 L 114 33 Z","stroke":"#8a4a1d","sw":1.4,"g":"head","fill":"#ec9a4e"},{"d":"M 121 33 L 137 18 L 138 42 Z","stroke":"#8a4a1d","sw":1.4,"g":"head","fill":"#ec9a4e"},{"d":"M 101 39 L 100 25 L 110 34 Z","g":"head","fill":"#f3a7a2"},{"d":"M 124 34 L 134 24 L 135 39 Z","g":"head","fill":"#f3a7a2"},{"e":[118,50,24,21],"stroke":"#8a4a1d","sw":1.4,"g":"head","fill":{"lg":[118,29,118,71,[[0.0,"#e0853a"],[1.0,"#ec9a4e"]]]}},{"d":"M 112 30 Q 113 37 115 40","stroke":"#c2672a","sw":2.2,"cap":1,"g":"head"},{"d":"M 118 29 L 118 39","stroke":"#c2672a","sw":2.2,"cap":1,"g":"head"},{"d":"M 124 30 Q 123 37 121 40","stroke":"#c2672a","sw":2.2,"cap":1,"g":"head"},{"e":[111,58,9,7],"g":"head","fill":"#fbe3c4"},{"e":[125,58,9,7],"g":"head","fill":"#fbe3c4"},{"e":[109,49,5.2,5.8],"stroke":"#8a4a1d","sw":1,"g":"head","pivot":[109,49],"anim":[{"blink":[4.6,0]}],"fill":"#8db63b"},{"e":[109.4,49,1.8,4.6],"g":"head","pivot":[109,49],"anim":[{"blink":[4.6,0]}],"fill":"#1b1b1b"},{"e":[110.7,46.8,1.3,1.3],"g":"head","pivot":[109,49],"anim":[{"blink":[4.6,0]}],"fill":"#ffffff"},{"e":[127,49,5.2,5.8],"stroke":"#8a4a1d","sw":1,"g":"head","pivot":[127,49],"anim":[{"blink":[4.6,0]}],"fill":"#8db63b"},{"e":[127.4,49,1.8,4.6],"g":"head","pivot":[127,49],"anim":[{"blink":[4.6,0]}],"fill":"#1b1b1b"},{"e":[128.7,46.8,1.3,1.3],"g":"head","pivot":[127,49],"anim":[{"blink":[4.6,0]}],"fill":"#ffffff"},{"d":"M 115 54 L 121 54 L 118 57.5 Z","g":"head","fill":"#e9837f"},{"d":"M 118 57.5 Q 117 61 113 60.5 M 118 57.5 Q 119 61 123 60.5","stroke":"#8a4a1d","sw":1.2,"cap":1,"g":"head"},{"d":"M 106 57 L 88 53 M 106 60 L 88 61 M 130 57 L 148 53 M 130 60 L 148 61","stroke":"#ffffff","sw":0.9,"cap":1,"g":"head","alpha":0.85}]},"sleep":{"groups":{"all":[],"body":[{"sy":[0.022,3.6,0]}],"head":[{"ty":[0.9,3.6,0]}]},"parts":[{"d":"M 38 116 C 36 94, 62 84, 100 84 C 138 84, 160 96, 160 114 C 160 126, 140 130, 100 130 C 60 130, 38 128, 38 116 Z","stroke":"#8a4a1d","sw":1.4,"g":"body","fill":{"lg":[0,84,0,130,[[0.0,"#e0853a"],[1.0,"#ec9a4e"]]]}},{"d":"M 70 88 Q 74 95 71 101","stroke":"#c2672a","sw":3.2,"cap":1,"g":"body"},{"d":"M 88 85 Q 92 93 89 100","stroke":"#c2672a","sw":3.2,"cap":1,"g":"body"},{"d":"M 106 86 Q 110 93 107 100","stroke":"#c2672a","sw":3.2,"cap":1,"g":"body"},{"d":"M 46 124 C 70 132, 140 134, 166 124 C 168 120, 162 117, 158 120 C 136 128, 76 127, 52 119 Z","stroke":"#8a4a1d","sw":1.2,"g":"body","fill":{"lg":[46,120,166,120,[[0.0,"#ec9a4e"],[1.0,"#c2672a"]]]}},{"e":[150,124,10,5],"stroke":"#8a4a1d","sw":1,"fill":"#fbe3c4"},{"d":"M 131 98 L 129 75 L 146 89 Z","stroke":"#8a4a1d","sw":1.4,"g":"head","fill":"#ec9a4e"},{"d":"M 153 89 L 169 74 L 170 98 Z","stroke":"#8a4a1d","sw":1.4,"g":"head","fill":"#ec9a4e"},{"d":"M 133 95 L 132 81 L 142 90 Z","g":"head","fill":"#f3a7a2"},{"d":"M 156 90 L 166 80 L 167 95 Z","g":"head","fill":"#f3a7a2"},{"e":[150,106,24,21],"stroke":"#8a4a1d","sw":1.4,"g":"head","fill":{"lg":[150,85,150,127,[[0.0,"#e0853a"],[1.0,"#ec9a4e"]]]}},{"d":"M 144 86 Q 145 93 147 96","stroke":"#c2672a","sw":2.2,"cap":1,"g":"head"},{"d":"M 150 85 L 150 95","stroke":"#c2672a","sw":2.2,"cap":1,"g":"head"},{"d":"M 156 86 Q 155 93 153 96","stroke":"#c2672a","sw":2.2,"cap":1,"g":"head"},{"e":[143,114,9,7],"g":"head","fill":"#fbe3c4"},{"e":[157,114,9,7],"g":"head","fill":"#fbe3c4"},{"d":"M 136 105 Q 141 109 146 105","stroke":"#8a4a1d","sw":1.8,"cap":1,"g":"head"},{"d":"M 154 105 Q 159 109 164 105","stroke":"#8a4a1d","sw":1.8,"cap":1,"g":"head"},{"d":"M 147 110 L 153 110 L 150 113.5 Z","g":"head","fill":"#e9837f"},{"d":"M 150 113.5 Q 149 117 145 116.5 M 150 113.5 Q 151 117 155 116.5","stroke":"#8a4a1d","sw":1.2,"cap":1,"g":"head"},{"d":"M 138 113 L 120 109 M 138 116 L 120 117 M 162 113 L 180 109 M 162 116 L 180 117","stroke":"#ffffff","sw":0.9,"cap":1,"g":"head","alpha":0.85}]}},"dog":{"walk":{"groups":{"all":[{"ty":[1.4,0.28,0]}],"head":[{"ty":[1.2,0.28,1.2]}]},"parts":[{"d":"M 50 74 C 40 66, 32 50, 36 36 C 38 30, 46 31, 44 38 C 42 50, 48 62, 56 68 Z","stroke":"#7a4a22","sw":1.4,"pivot":[52,72],"anim":[{"rot":[18,0.42,0]}],"fill":{"lg":[36,34,56,74,[[0.0,"#bd8143"],[1.0,"#dda25f"]]]}},{"d":"M 121 88 C 121 110.55, 122.96 117, 122.96 125 Q 122.96 129 128 129 Q 133.04 129 133.04 125 C 133.04 117, 135 110.55, 135 88 Z","stroke":"#7a4a22","sw":1.4,"pivot":[128,90],"anim":[{"rot":[24,0.56,3.141592653589793]}],"fill":"#bd8143"},{"e":[129.5,126.4,7.24,3.5],"stroke":"#7a4a22","sw":0.9,"pivot":[128,90],"anim":[{"rot":[24,0.56,3.141592653589793]}],"fill":"#f6e2c0"},{"d":"M 64.2 94 C 62.2 104, 59.2 112, 60.2 116 C 61.2 121, 64.2 125, 65.2 126 Q 65.2 129 71 129 Q 75.8 129 75.8 125 C 74.8 118, 75.8 110, 77.8 96 Z","stroke":"#7a4a22","sw":1.4,"pivot":[72,84],"anim":[{"rot":[20,0.56,0]}],"fill":"#bd8143"},{"e":[72,126.4,7.4,3.5],"stroke":"#7a4a22","sw":0.9,"pivot":[72,84],"anim":[{"rot":[20,0.56,0]}],"fill":"#f6e2c0"},{"e":[72,89,14.25,17.25],"stroke":"#7a4a22","sw":1.4,"pivot":[72,84],"anim":[{"rot":[20,0.56,0]}],"fill":"#bd8143"},{"d":"M 44 82 C 44 62, 70 56, 100 57 C 130 58, 150 62, 152 82 C 153 100, 136 106, 100 106 C 68 106, 44 102, 44 82 Z","stroke":"#7a4a22","sw":1.4,"fill":{"lg":[0,57,0,106,[[0.0,"#c98a47"],[1.0,"#dda25f"]]]}},{"d":"M 70 102 C 90 108, 118 108, 138 99 C 124 104, 90 105, 70 102 Z","fill":"#f6e2c0"},{"e":[142,84,12,16],"fill":"#f6e2c0"},{"d":"M 49.88 92 C 47.88 102, 44.88 112, 45.88 116 C 46.88 121, 49.88 125, 50.88 126 Q 50.88 129 57 129 Q 62.12 129 62.12 125 C 61.12 118, 62.12 110, 64.12 94 Z","stroke":"#7a4a22","sw":1.4,"pivot":[58,82],"anim":[{"rot":[20,0.56,3.141592653589793]}],"fill":"#dda25f"},{"e":[58,126.4,7.72,3.5],"stroke":"#7a4a22","sw":0.9,"pivot":[58,82],"anim":[{"rot":[20,0.56,3.141592653589793]}],"fill":"#f6e2c0"},{"e":[58,87,15.2,18.4],"stroke":"#7a4a22","sw":1.4,"pivot":[58,82],"anim":[{"rot":[20,0.56,3.141592653589793]}],"fill":"#dda25f"},{"d":"M 132.75 90 C 132.75 111.45, 134.78 117, 134.78 125 Q 134.78 129 140 129 Q 145.22 129 145.22 125 C 145.22 117, 147.25 111.45, 147.25 90 Z","stroke":"#7a4a22","sw":1.4,"pivot":[140,92],"anim":[{"rot":[24,0.56,0]}],"fill":"#dda25f"},{"e":[141.5,126.4,7.42,3.5],"stroke":"#7a4a22","sw":0.9,"pivot":[140,92],"anim":[{"rot":[24,0.56,0]}],"fill":"#f6e2c0"},{"e":[160,56,22,20],"stroke":"#7a4a22","sw":1.4,"g":"head","fill":{"lg":[160,36,160,76,[[0.0,"#c98a47"],[1.0,"#dda25f"]]]}},{"e":[162,66,14,10.5],"stroke":"#7a4a22","sw":1.2,"g":"head","fill":"#f6e2c0"},{"e":[162,60,5.8,4.2],"g":"head","fill":"#2a201c"},{"e":[163.6,58.6,1.6,1],"g":"head","alpha":0.6,"fill":"#ffffff"},{"d":"M 162 64 L 162 68 M 162 68 Q 157 72 153 69 M 162 68 Q 167 72 171 69","stroke":"#7a4a22","sw":1.3,"cap":1,"g":"head"},{"d":"M 158 70 Q 162 80 166 70 Z","stroke":"#c45567","sw":1,"g":"head","fill":"#ef7d8b"},{"e":[152,52,4.4,4.8],"g":"head","pivot":[152,52],"anim":[{"blink":[5.2,1.3]}],"fill":"#5a3a22"},{"e":[153.4,50.4,1.4,1.4],"g":"head","pivot":[152,52],"anim":[{"blink":[5.2,1.3]}],"fill":"#ffffff"},{"e":[170,52,4.4,4.8],"g":"head","pivot":[170,52],"anim":[{"blink":[5.2,1.3]}],"fill":"#5a3a22"},{"e":[171.4,50.4,1.4,1.4],"g":"head","pivot":[170,52],"anim":[{"blink":[5.2,1.3]}],"fill":"#ffffff"},{"d":"M 146 40 C 130 42, 128 64, 136 72 C 142 76, 146 62, 148 50 Z","stroke":"#7a4a22","sw":1.3,"g":"head","pivot":[146,42],"anim":[{"rot":[5,1.4,0]}],"fill":{"lg":[130,40,146,74,[[0.0,"#9a6233"],[1.0,"#b57a45"]]]}},{"d":"M 176 40 C 192 42, 194 64, 186 72 C 180 76, 176 62, 174 50 Z","stroke":"#7a4a22","sw":1.3,"g":"head","pivot":[176,42],"anim":[{"rot":[5,1.4,1.5]}],"fill":{"lg":[174,40,192,74,[[0.0,"#b57a45"],[1.0,"#9a6233"]]]}}]},"sit":{"groups":{"all":[],"body":[{"sy":[0.014,2.4,0]}],"head":[{"ty":[1.0,2.4,0.6]}]},"parts":[{"d":"M 60 126 C 44 122, 40 108, 50 104 C 56 101, 60 108, 56 112 C 54 117, 60 120, 68 120 Z","stroke":"#7a4a22","sw":1.3,"pivot":[64,122],"anim":[{"rot":[10,0.6,0]}],"fill":{"lg":[40,100,68,126,[[0.0,"#bd8143"],[1.0,"#dda25f"]]]}},{"d":"M 70 129 C 56 110, 64 78, 94 68 C 118 60, 136 76, 135 98 C 135 118, 126 129, 112 129 Z","stroke":"#7a4a22","sw":1.4,"g":"body","fill":{"lg":[0,66,0,129,[[0.0,"#c98a47"],[1.0,"#dda25f"]]]}},{"e":[120,94,13,21],"g":"body","fill":"#f6e2c0"},{"e":[86,112,26,17],"stroke":"#7a4a22","sw":1.4,"g":"body","fill":{"lg":[0,95,0,129,[[0.0,"#dda25f"],[1.0,"#c98a47"]]]}},{"d":"M 106.5 96 C 106.5 114.15, 108.32 117, 108.32 125 Q 108.32 129 113 129 Q 117.68 129 117.68 125 C 117.68 117, 119.5 114.15, 119.5 96 Z","stroke":"#7a4a22","sw":1.4,"pivot":[113,98],"fill":"#bd8143"},{"e":[114.5,126.4,6.88,3.5],"stroke":"#7a4a22","sw":0.9,"pivot":[113,98],"fill":"#f6e2c0"},{"d":"M 119.25 96 C 119.25 114.15, 121.14 117, 121.14 125 Q 121.14 129 126 129 Q 130.86 129 130.86 125 C 130.86 117, 132.75 114.15, 132.75 96 Z","stroke":"#7a4a22","sw":1.4,"pivot":[126,98],"fill":"#dda25f"},{"e":[127.5,126.4,7.06,3.5],"stroke":"#7a4a22","sw":0.9,"pivot":[126,98],"fill":"#f6e2c0"},{"e":[120,50,22,20],"stroke":"#7a4a22","sw":1.4,"g":"head","fill":{"lg":[120,30,120,70,[[0.0,"#c98a47"],[1.0,"#dda25f"]]]}},{"e":[122,60,14,10.5],"stroke":"#7a4a22","sw":1.2,"g":"head","fill":"#f6e2c0"},{"e":[122,54,5.8,4.2],"g":"head","fill":"#2a201c"},{"e":[123.6,52.6,1.6,1],"g":"head","alpha":0.6,"fill":"#ffffff"},{"d":"M 122 58 L 122 62 M 122 62 Q 117 66 113 63 M 122 62 Q 127 66 131 63","stroke":"#7a4a22","sw":1.3,"cap":1,"g":"head"},{"d":"M 118 64 Q 122 74 126 64 Z","stroke":"#c45567","sw":1,"g":"head","fill":"#ef7d8b"},{"e":[112,46,4.4,4.8],"g":"head","pivot":[112,46],"anim":[{"blink":[5.2,1.3]}],"fill":"#5a3a22"},{"e":[113.4,44.4,1.4,1.4],"g":"head","pivot":[112,46],"anim":[{"blink":[5.2,1.3]}],"fill":"#ffffff"},{"e":[130,46,4.4,4.8],"g":"head","pivot":[130,46],"anim":[{"blink":[5.2,1.3]}],"fill":"#5a3a22"},{"e":[131.4,44.4,1.4,1.4],"g":"head","pivot":[130,46],"anim":[{"blink":[5.2,1.3]}],"fill":"#ffffff"},{"d":"M 106 34 C 90 36, 88 58, 96 66 C 102 70, 106 56, 108 44 Z","stroke":"#7a4a22","sw":1.3,"g":"head","pivot":[106,36],"anim":[{"rot":[5,1.4,0]}],"fill":{"lg":[90,34,106,68,[[0.0,"#9a6233"],[1.0,"#b57a45"]]]}},{"d":"M 136 34 C 152 36, 154 58, 146 66 C 140 70, 136 56, 134 44 Z","stroke":"#7a4a22","sw":1.3,"g":"head","pivot":[136,36],"anim":[{"rot":[5,1.4,1.5]}],"fill":{"lg":[134,34,152,68,[[0.0,"#b57a45"],[1.0,"#9a6233"]]]}}]},"sleep":{"groups":{"all":[],"body":[{"sy":[0.022,3.6,0]}],"head":[{"ty":[0.9,3.6,0]}]},"parts":[{"d":"M 36 116 C 34 94, 62 84, 100 84 C 138 84, 160 96, 160 114 C 160 126, 140 130, 100 130 C 60 130, 36 128, 36 116 Z","stroke":"#7a4a22","sw":1.4,"g":"body","fill":{"lg":[0,84,0,130,[[0.0,"#c98a47"],[1.0,"#dda25f"]]]}},{"d":"M 40 124 C 26 127, 16 121, 20 114 C 23 109, 30 115, 42 116 Z","stroke":"#7a4a22","sw":1.2,"pivot":[40,120],"anim":[{"rot":[3,3.6,0]}],"fill":{"lg":[16,112,42,124,[[0.0,"#bd8143"],[1.0,"#dda25f"]]]}},{"e":[146,125,14,5],"stroke":"#7a4a22","sw":1.1,"fill":"#f6e2c0"},{"e":[124,125,12,5],"stroke":"#7a4a22","sw":1.1,"fill":"#f6e2c0"},{"e":[146,104,22,20],"stroke":"#7a4a22","sw":1.4,"g":"head","fill":{"lg":[146,84,146,124,[[0.0,"#c98a47"],[1.0,"#dda25f"]]]}},{"e":[148,114,14,10.5],"stroke":"#7a4a22","sw":1.2,"g":"head","fill":"#f6e2c0"},{"e":[148,108,5.8,4.2],"g":"head","fill":"#2a201c"},{"e":[149.6,106.6,1.6,1],"g":"head","alpha":0.6,"fill":"#ffffff"},{"d":"M 148 112 L 148 116 M 148 116 Q 143 120 139 117 M 148 116 Q 153 120 157 117","stroke":"#7a4a22","sw":1.3,"cap":1,"g":"head"},{"d":"M 133 101 Q 138 105 143 101","stroke":"#7a4a22","sw":1.8,"cap":1,"g":"head"},{"d":"M 151 101 Q 156 105 161 101","stroke":"#7a4a22","sw":1.8,"cap":1,"g":"head"},{"d":"M 132 88 C 116 90, 114 112, 122 120 C 128 124, 132 110, 134 98 Z","stroke":"#7a4a22","sw":1.3,"g":"head","pivot":[132,90],"anim":[{"rot":[5,1.4,0]}],"fill":{"lg":[116,88,132,122,[[0.0,"#9a6233"],[1.0,"#b57a45"]]]}},{"d":"M 162 88 C 178 90, 180 112, 172 120 C 166 124, 162 110, 160 98 Z","stroke":"#7a4a22","sw":1.3,"g":"head","pivot":[162,90],"anim":[{"rot":[5,1.4,1.5]}],"fill":{"lg":[160,88,178,122,[[0.0,"#b57a45"],[1.0,"#9a6233"]]]}}]}}}}''')
+
+# ── talking to the board ─────────────────────────────────────────────────────────────────────
+
+
+def _load(name, default=""):
+    try:
+        with open(os.path.join(HOME, name)) as f:
+            return f.read().strip()
+    except OSError:
+        return default
+
+
+def _ident():
+    ident = _load("id")
+    if len(ident) != 8:
+        ident = "%08x" % random.getrandbits(32)
+        os.makedirs(HOME, exist_ok=True)
+        with open(os.path.join(HOME, "id"), "w") as f:
+            f.write(ident)
+    return ident
+
+
+class Link(threading.Thread):
+    """Beats to the board once a second in the background; the window only ever reads `state`."""
+
+    def __init__(self):
+        super().__init__(daemon=True)
+        self.hosts = (_load("board") or "pet.local 192.168.4.1").split()
+        self.host = None
+        self.id = _ident()
+        self.name = socket.gethostname().split(".")[0][:24] or "computer"
+        self.state = None                    # the board's last answer
+        self.fresh = 0.0                     # when it came
+        self.posts = queue.Queue()
+        self.paused_until = 0.0
+        self.http = urllib.request.build_opener(urllib.request.ProxyHandler({}))   # never via a proxy
+
+    def _call(self, path, params, post=False):
+        order = ([self.host] if self.host else []) + [h for h in self.hosts if h != self.host]
+        for host in order:
+            try:
+                q = urllib.parse.urlencode(params)
+                url = "http://%s%s" % (host, path) + ("" if post else "?" + q)
+                req = urllib.request.Request(url, data=q.encode() if post else None)
+                with self.http.open(req, timeout=2.5) as r:
+                    out = json.loads(r.read().decode())
+                self.host = host
+                return out
+            except Exception:
+                continue
+        self.host = None
+        return None
+
+    def post(self, path, **params):
+        params["id"] = self.id
+        self.posts.put((path, params))
+
+    def run(self):
+        while True:
+            t0 = time.monotonic()
+            while not self.posts.empty():
+                path, params = self.posts.get()
+                self._call(path, params, post=True)
+            if time.time() < self.paused_until:
+                self.state = None
+            else:
+                lt = time.localtime()
+                out = self._call("/beat", {"id": self.id, "n": self.name,
+                                           "h": "%.2f" % (lt.tm_hour + lt.tm_min / 60)})
+                if out and out.get("ok"):
+                    self.state, self.fresh = out, time.monotonic()
+            time.sleep(max(0.05, 1.0 - (time.monotonic() - t0)))
+
+    def snapshot(self):
+        if self.state and time.monotonic() - self.fresh < 12:
+            return self.state
+        return None
+
+
+# ── the window ───────────────────────────────────────────────────────────────────────────────
+
+
+_TOKENS = re.compile(r"[MLCQZ]|-?(?:\d+\.?\d*|\.\d+)")
+
+
+def _qpath(d):
+    """An SVG path (absolute M, L, C, Q, Z — all the rig uses) as a QPainterPath."""
+    p, toks, i, cmd = QPainterPath(), _TOKENS.findall(d), 0, "M"
+    while i < len(toks):
+        t = toks[i]
+        if t in "MLCQZ":
+            cmd, i = t, i + 1
+            if t == "Z":
+                p.closeSubpath()
+            continue
+        n = {"M": 2, "L": 2, "C": 6, "Q": 4}[cmd]
+        v = [float(x) for x in toks[i:i + n]]
+        i += n
+        if cmd == "M":
+            p.moveTo(*v)
+            cmd = "L"
+        elif cmd == "L":
+            p.lineTo(*v)
+        elif cmd == "C":
+            p.cubicTo(*v)
+        else:
+            p.quadTo(*v)
+    return p
+
+
+class Rig:
+    """The pets as smooth shapes: built once, then each frame only the movement is worked out.
+    The phone page draws the same rig on a canvas, the same way."""
+
+    def __init__(self):
+        self.poses = {}
+        for kind, poses in RIG["pets"].items():
+            for pose, P in poses.items():
+                parts = []
+                for q in P["parts"]:
+                    if "e" in q:
+                        cx, cy, rx, ry = q["e"]
+                        path = QPainterPath()
+                        path.addEllipse(QRectF(cx - rx, cy - ry, 2 * rx, 2 * ry))
+                    else:
+                        path = _qpath(q["d"])
+                    parts.append((q, path, self._brush(q.get("fill")), self._pen(q)))
+                self.poses[(kind, pose)] = (P["groups"], parts)
+
+    @staticmethod
+    def _brush(f):
+        if not f:
+            return QBrush(Qt.BrushStyle.NoBrush)
+        if isinstance(f, str):
+            return QBrush(QColor(f))
+        x1, y1, x2, y2, stops = f["lg"]
+        g = QLinearGradient(x1, y1, x2, y2)
+        for o, c in stops:
+            g.setColorAt(o, QColor(c))
+        return QBrush(g)
+
+    @staticmethod
+    def _pen(q):
+        if not q.get("stroke"):
+            return QPen(Qt.PenStyle.NoPen)
+        pen = QPen(QColor(q["stroke"]), q.get("sw", 1))
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap if q.get("cap") else Qt.PenCapStyle.FlatCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        return pen
+
+    @staticmethod
+    def _anim(p, steps, t, pivot):
+        for a in steps or ():
+            px, py = pivot or (0, 0)
+            if "rot" in a:
+                amp, per, ph = a["rot"]
+                p.translate(px, py)
+                p.rotate(amp * math.sin(2 * math.pi * t / per + ph))
+                p.translate(-px, -py)
+            elif "ty" in a:
+                amp, per, ph = a["ty"]
+                p.translate(0, amp * math.sin(2 * math.pi * t / per + ph))
+            elif "sy" in a:
+                amp, per, ph = a["sy"]
+                p.translate(0, 130)
+                p.scale(1, 1 + amp * math.sin(2 * math.pi * t / per + ph))
+                p.translate(0, -130)
+            elif "blink" in a:
+                per, off = a["blink"]
+                if (t + off) % per < 0.14:
+                    p.translate(px, py)
+                    p.scale(1, 0.12)
+                    p.translate(-px, -py)
+
+    def draw(self, p, kind, pose, t, facing):
+        groups, parts = self.poses[(kind, pose)]
+        base, op = p.transform(), p.opacity()
+        for q, path, brush, pen in parts:
+            p.setTransform(base)
+            if facing < 0:
+                p.translate(RIG["box"][0], 0)
+                p.scale(-1, 1)
+            self._anim(p, groups.get("all"), t, None)
+            if q.get("g"):
+                self._anim(p, groups.get(q["g"]), t, None)
+            self._anim(p, q.get("anim"), t, q.get("pivot"))
+            p.setOpacity(op * q.get("alpha", 1))
+            p.setBrush(brush)
+            p.setPen(pen)
+            p.drawPath(path)
+        p.setTransform(base)
+        p.setOpacity(op)
+
+
+class Pet(QWidget):
+    def __init__(self, link):
+        flags = (Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint
+                 | Qt.WindowType.Tool | Qt.WindowType.WindowDoesNotAcceptFocus
+                 | Qt.WindowType.NoDropShadowWindowHint)
+        super().__init__(None, flags)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        self.setAttribute(Qt.WidgetAttribute.WA_MacAlwaysShowToolWindow)   # don't vanish with focus
+        self.link = link
+        self.rig = Rig()
+        self.resize_pet(SIZE)
+
+        self.mode = "away"           # away enter walk idle exit flee drag fall sleep
+        self.x = self.y = 0.0
+        self.facing = 1
+        self.target = 0.0
+        self.until = 0.0             # end of an idle pause
+        self.next_exit = 0.0
+        self.exit_side = 1
+        self.left_at = 0.0
+        self.arr_seen = None
+        self.ev_seen = None
+        self.kind = "cat"
+        self.pet = {}
+        self.hearts = []             # [x, y, age]
+        self.bubble = ("", 0.0)
+        self.jump_until = 0.0
+        self.anim = 0.0
+        self.press = None
+        self.drag_off = QPoint()
+        self.vy = 0.0
+        self.last = time.monotonic()
+        self.mac_done = False
+
+        self.tick = QTimer(self)
+        self.tick.timeout.connect(self.step)
+        self.tick.start(33)
+
+    # geometry ----------------------------------------------------------------------------
+    def resize_pet(self, size):
+        self.size = max(70, min(240, int(size)))
+        self.k = self.size / RIG["box"][1]
+        self.w, self.h = int(RIG["box"][0] * self.k) + 4, int(RIG["box"][1] * self.k) + HEAD
+        self.setFixedSize(self.w, self.h)
+
+    def head_x(self):
+        at = {"sit": 0.59, "sleep": 0.75}.get(self.pose(), 0.8)
+        return self.w * (at if self.facing > 0 else 1 - at)
+
+    def pose(self):
+        if self.mode == "sleep":
+            return "sleep"
+        return "walk" if self.mode in ("enter", "walk", "exit", "flee", "drag") else "sit"
+
+    def screen_box(self):
+        g = QApplication.primaryScreen().availableGeometry()
+        return g.left(), g.right(), g.bottom() - self.h + 1
+
+    def place(self):
+        self.move(int(self.x), int(self.y))
+
+    def walk_to(self, x, mode="walk"):
+        self.target, self.mode = x, mode
+        self.facing = 1 if x > self.x else -1
+
+    def wander(self):
+        left, right, _ = self.screen_box()
+        self.walk_to(random.uniform(left + 10, right - self.w - 10))
+
+    # the frame loop ----------------------------------------------------------------------
+    def step(self):
+        now = time.monotonic()
+        dt, self.last = min(0.1, now - self.last), now
+        self.anim += dt
+        s = self.link.snapshot()
+        pet = (s or {}).get("pet")
+        here = bool(s and pet and s.get("here"))
+        left, right, ground = self.screen_box()
+
+        if pet:
+            self.pet, self.kind = pet, ("dog" if pet.get("k") == 1 else "cat")
+            if pet.get("sz") and int(pet["sz"]) != self.size:
+                self.resize_pet(pet["sz"])
+            self.setToolTip("%s · %s" % (pet.get("n", ""), pet.get("mood", "")))
+
+        if not here:
+            if self.mode not in ("away", "flee", "drag"):
+                side = 0 if self.x + self.w / 2 < (left + right) / 2 else 1
+                self.walk_to(left - self.w - 5 if side == 0 else right + 5, "flee")
+        else:
+            arr = s.get("arr")
+            if arr != self.arr_seen and self.mode not in ("drag",):
+                if self.arr_seen is not None or self.mode == "away":
+                    self.arrive(s.get("side", 0), left, right, ground)
+                self.arr_seen = arr
+            elif self.mode == "away" and now - self.left_at > 3:
+                self.arrive(s.get("side", 0), left, right, ground)     # a leave that didn't land
+            ev = s.get("ev")
+            if ev != self.ev_seen:
+                if self.ev_seen is not None and self.mode != "away":
+                    self.react(s.get("evk", ""))
+                self.ev_seen = ev
+            asleep = bool(pet.get("sleep"))
+            if asleep and self.mode in ("enter", "walk", "idle") and left <= self.x <= right - self.w:
+                self.mode = "sleep"
+            elif not asleep and self.mode == "sleep":
+                self.mode, self.until = "idle", now + 1.5
+            # wander off to another computer now and then
+            if (s.get("others", 0) > 0 and not asleep and self.mode in ("walk", "idle")
+                    and now > self.next_exit):
+                self.send_off()
+
+        self.move_pet(dt, now, left, right, ground)
+        self.hearts = [[x, y - 26 * dt, a + dt] for x, y, a in self.hearts if a < 1.6]
+        if self.mode != "away":
+            self.place()
+            if not self.isVisible():
+                self.show()
+                self.mac_float()
+            self.update()
+
+    def arrive(self, side, left, right, ground):
+        self.x = left - self.w if side == 0 else right
+        self.y = ground
+        self.next_exit = time.monotonic() + random.uniform(*ROAM)
+        self.walk_to(random.uniform(left + 40, right - self.w - 40), "enter")
+
+    def send_off(self):
+        left, right, _ = self.screen_box()
+        self.exit_side = 0 if self.x + self.w / 2 < (left + right) / 2 else 1
+        if random.random() < 0.3:
+            self.exit_side ^= 1
+        self.walk_to(left - self.w - 5 if self.exit_side == 0 else right + 5, "exit")
+
+    def move_pet(self, dt, now, left, right, ground):
+        m = self.mode
+        if m in ("enter", "walk", "exit", "flee"):
+            speed = (RUN if m == "flee" else WALK) * self.w
+            d = self.target - self.x
+            if abs(d) <= speed * dt:
+                self.x = self.target
+                if m == "exit":
+                    self.link.post("/leave", s=self.exit_side)
+                    self.vanish()
+                elif m == "flee":
+                    self.vanish()
+                else:
+                    self.mode, self.until = "idle", now + random.uniform(2.5, 8)
+            else:
+                self.x += math.copysign(speed * dt, d)
+                self.facing = 1 if d > 0 else -1
+            self.y = ground
+        elif m == "idle" and now > self.until:
+            self.wander()
+        elif m == "fall":
+            self.vy += 1800 * dt
+            self.y = min(ground, self.y + self.vy * dt)
+            if self.y >= ground:
+                self.mode, self.until = "idle", now + 2
+        if m in ("idle", "sleep", "walk") and self.y != ground and m != "fall":
+            self.y = ground
+        self.x = max(left - self.w - 10, min(right + 10, self.x))
+        # a hungry pet says so now and then
+        if m == "idle" and self.pet.get("mood") == "hungry" and now > self.bubble[1] + 25:
+            self.say("🐟" if self.kind == "cat" else "🦴", 3)
+
+    def vanish(self):
+        self.mode, self.left_at = "away", time.monotonic()
+        self.hearts = []
+        self.hide()
+
+    def react(self, kind):          # (not "event": that name is QWidget's own)
+        now = time.monotonic()
+        if kind in ("pet", "poke", "adopt"):
+            self.hearts += [[self.head_x() + random.uniform(-16, 16), HEAD + 6, -i * 0.25] for i in range(3)]
+        elif kind == "feed":
+            self.say("🐟" if self.kind == "cat" else "🦴", 2.5)
+            if self.mode in ("walk", "idle"):
+                self.mode, self.until = "idle", now + 3
+        elif kind == "play":
+            self.jump_until = now + 1.6
+
+    def say(self, text, secs):
+        self.bubble = (text, time.monotonic() + secs)
+
+    # drawing -----------------------------------------------------------------------------
+    def paintEvent(self, _):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        now = time.monotonic()
+        lift = 0
+        if now < self.jump_until:
+            lift = abs(math.sin((self.jump_until - now) * 6)) * self.h * 0.14
+        t = self.anim * (2.0 if self.mode == "flee" else 1.0)
+        if self.mode == "drag":
+            t = 0.15                                     # legs held mid-stride while carried
+        p.save()
+        p.translate(2, HEAD - lift)
+        p.scale(self.k, self.k)
+        self.rig.draw(p, self.kind, self.pose(), t, self.facing)
+        p.restore()
+        if self.mode == "sleep":
+            p.setPen(QColor("#6b7894"))
+            p.setFont(QFont("Helvetica", 11, QFont.Weight.Bold))
+            k = (self.anim % 2.4) / 2.4
+            hx = self.head_x()
+            p.drawText(QRectF(hx - 4, HEAD + self.h * 0.25 - k * 16, 30, 16), "z")
+            p.drawText(QRectF(hx + 8, HEAD + self.h * 0.12 - k * 12, 30, 16), "Z")
+        for x, y, a in self.hearts:
+            if a >= 0:
+                p.setOpacity(max(0.0, 1 - a / 1.6))
+                self.heart(p, x, y)
+        p.setOpacity(1)
+        text, until = self.bubble
+        if now < until and self.mode != "sleep":
+            r = QRectF(self.head_x() - 15, 0, 30, 26)
+            path = QPainterPath()
+            path.addRoundedRect(r, 9, 9)
+            p.fillPath(path, QColor(255, 255, 255, 235))
+            p.setPen(QColor(0, 0, 0, 60))
+            p.drawPath(path)
+            p.setFont(QFont("Apple Color Emoji" if sys.platform == "darwin" else "Segoe UI Emoji", 13))
+            p.setPen(QColor("#222"))
+            p.drawText(r, Qt.AlignmentFlag.AlignCenter, text)
+        p.end()
+
+    def heart(self, p, x, y):
+        path = QPainterPath()
+        path.moveTo(x, y + 4)
+        path.cubicTo(x - 8, y - 3, x - 3, y - 9, x, y - 4)
+        path.cubicTo(x + 3, y - 9, x + 8, y - 3, x, y + 4)
+        p.fillPath(path, QColor("#ef4f6b"))
+
+    # the mouse ---------------------------------------------------------------------------
+    def mousePressEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton:
+            self.press = e.globalPosition().toPoint()
+            self.drag_off = self.press - QPoint(int(self.x), int(self.y))
+
+    def mouseMoveEvent(self, e):
+        if self.press is None:
+            return
+        pos = e.globalPosition().toPoint()
+        if self.mode != "drag" and (pos - self.press).manhattanLength() > 5:
+            self.mode = "drag"
+        if self.mode == "drag":
+            self.x, self.y = pos.x() - self.drag_off.x(), pos.y() - self.drag_off.y()
+            self.place()
+
+    def mouseReleaseEvent(self, e):
+        if e.button() != Qt.MouseButton.LeftButton or self.press is None:
+            return
+        self.press = None
+        if self.mode == "drag":
+            self.mode, self.vy = "fall", 0.0
+        else:                                        # a click: a stroke
+            self.link.post("/poke")
+            self.hearts += [[self.head_x() + random.uniform(-12, 12), HEAD + 6, -i * 0.2] for i in range(2)]
+
+    def contextMenuEvent(self, e):
+        name = self.pet.get("n") or "your pet"
+        m = QMenu()
+        page = QAction("Open %s's page" % name, m)
+        page.triggered.connect(lambda: QDesktopServices.openUrl(
+            QUrl("http://%s/" % (self.link.host or self.link.hosts[0]))))
+        go = QAction("Send to another computer", m)
+        go.setEnabled(bool((self.link.snapshot() or {}).get("others")) and self.mode in ("walk", "idle"))
+        go.triggered.connect(self.send_off)
+        rest = QAction("Pause here for 15 minutes", m)
+        rest.triggered.connect(self.pause)
+        bye = QAction("Quit", m)
+        bye.triggered.connect(QApplication.quit)
+        for a in (page, go, rest):
+            m.addAction(a)
+        m.addSeparator()
+        m.addAction(bye)
+        m.exec(e.globalPos())
+
+    def pause(self):
+        self.link.paused_until = time.time() + 15 * 60   # the board moves the pet on in a few s
+
+    # macOS: on every desktop, over full-screen apps, and no Dock icon ---------------------
+    def mac_float(self):
+        if QApplication.platformName() != "cocoa" or self.mac_done:
+            return
+        self.mac_done = True
+        try:
+            win = _msg(int(self.winId()), b"window")
+            # canJoinAllSpaces | stationary | ignoresCycle | fullScreenAuxiliary
+            _msg(win, b"setCollectionBehavior:", 1 | 16 | 64 | 256, argtypes=(ctypes.c_ulong,), restype=None)
+        except Exception:
+            pass
+
+
+if sys.platform == "darwin":
+    import ctypes
+    import ctypes.util
+
+    _objc = ctypes.cdll.LoadLibrary(ctypes.util.find_library("objc"))
+    _objc.objc_getClass.restype = ctypes.c_void_p
+    _objc.objc_getClass.argtypes = [ctypes.c_char_p]
+    _objc.sel_registerName.restype = ctypes.c_void_p
+    _objc.sel_registerName.argtypes = [ctypes.c_char_p]
+
+    def _msg(obj, sel, *args, argtypes=(), restype=ctypes.c_void_p):
+        f = _objc.objc_msgSend
+        f.restype = restype
+        f.argtypes = [ctypes.c_void_p, ctypes.c_void_p] + list(argtypes)
+        return f(obj, _objc.sel_registerName(sel), *args)
+
+    def _accessory():
+        app = _msg(_objc.objc_getClass(b"NSApplication"), b"sharedApplication")
+        _msg(app, b"setActivationPolicy:", 1, argtypes=(ctypes.c_long,), restype=ctypes.c_bool)
+
+
+def _only_one():
+    """A second copy (say, after reinstalling) just exits; returns the socket to keep it held."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.bind(("127.0.0.1", int(os.environ.get("DEVKIT_PET_PORT", "47331"))))
+        s.listen(1)
+        return s
+    except OSError:
+        sys.exit(0)
+
+
+def main():
+    lock = _only_one()
+    app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)
+    if QApplication.platformName() == "cocoa":
+        try:
+            _accessory()
+        except Exception:
+            pass
+    link = Link()
+    link.start()
+    pet = Pet(link)
+    app.exec()
+    del lock, pet
+
+
+if __name__ == "__main__":
+    main()

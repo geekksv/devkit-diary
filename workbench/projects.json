@@ -85,6 +85,18 @@
       "host": "ludo",
       "partition": "default",
       "after": "Open http://ludo.local on each phone (or join devkit-ludo if you skip the WiFi step)"
+    },
+    {
+      "id": "09-pet",
+      "title": "A pet that lives on the WiFi",
+      "chapter": "chapters/09-a-pet-that-lives-on-the-wifi",
+      "sketch": "chapters/09-a-pet-that-lives-on-the-wifi/src/pet",
+      "description": "A cat or a dog that lives on the board and walks across your computer screens, over any app, hopping from one computer to the next. Look after it from a phone.",
+      "wifi": "devkit-pet",
+      "wifi_setup": true,
+      "host": "pet",
+      "partition": "default",
+      "after": "Open http://pet.local on your phone to adopt it, then add each computer with the one-line command shown there"
     }
   ],
   "devices": [
