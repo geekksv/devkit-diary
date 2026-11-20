@@ -1,454 +1,571 @@
-"""The pets, drawn as a rig of smooth shapes — and how each part moves.
+"""The pets, drawn as naturalistic illustrations — and how each part moves.
+
+Five animals drawn in side profile with real proportions: a domestic cat (orange tabby), a dog
+(golden retriever), a rabbit (wild brown), a red fox and a giant panda. Each has jointed legs
+(shoulder–elbow–wrist, hip–stifle–hock), shading rather than outlines, and its own markings.
 
 Writes the rig as one JSON line into both places that draw it, so they can never drift apart:
-the desktop helper (devkit_pet.py, drawn with QPainter) and the phone page (pet_page.h, drawn
-on a canvas). Run after changing anything here:  python3 helper/art.py
+the desktop helper (devkit_pet.py, drawn with QPainter) and the phone page (pet_page.h, drawn on
+a canvas). Run after changing anything here:  python3 helper/art.py
 
-Coordinates: a 200 x 140 box, ground at y = 130, the pet facing right.
+Coordinates: a 200 x 140 box, ground at y = 130, the animal facing right.
 A part is a path ("d", absolute M/L/C/Q/Z only) or an ellipse ("e": cx, cy, rx, ry), with a fill
 (a colour, or a linear gradient "lg": x1, y1, x2, y2, [[stop, colour], ...]), an optional stroke,
-and optional animations, applied in order around a pivot:
-    rot   [amplitude deg, period s, phase rad]   swing (legs, tail, ears)
-    ty    [amplitude, period, phase]             bob up and down
-    sy    [amplitude, period, phase]             breathe (scale y)
+an optional "alpha", and optional animation steps applied in order — each about its own joint
+"at" (or the part's "pivot"), so a lower leg can swing with the upper leg and then bend:
+    rot   [amplitude deg, period s, phase rad]
+    ty    [amplitude, period, phase]             bob
+    sy    [amplitude, period, phase]             breathe (scale y about the ground)
     blink [period s, offset s]                   eyes: squeeze shut for a moment
-A part in group "g" also gets that group's animations first (a head that bobs as one), and every
-part gets the pose's "all" group.
+Parts in group "g" also get that group's steps first, and every part gets the pose's "all" group.
 """
 import json, math, pathlib, re
 
 HERE = pathlib.Path(__file__).resolve().parent
+G = 130                                          # the ground
+
+
+# ── drawing helpers ─────────────────────────────────────────────────────────────────────────
+
+def _r(v):
+    v = round(v, 2)
+    return int(v) if float(v).is_integer() else v
+
+
+def _num(m):
+    return str(_r(float(m.group())))
+
+
+def shift(d, dx, dy):
+    """Move every coordinate pair of a path (all commands here take x,y pairs)."""
+    out, k = [], 0
+    for tok in re.findall(r"[MLCQZ]|-?\d*\.?\d+", d):
+        if tok in "MLCQZ":
+            out.append(tok)
+        else:
+            out.append(str(_r(float(tok) + (dx if k % 2 == 0 else dy))))
+            k += 1
+    return " ".join(out)
+
+
+def scale(d, s):
+    if s == 1:
+        return d
+    return " ".join(t if t in "MLCQZ" else str(_r(float(t) * s)) for t in re.findall(r"[MLCQZ]|-?\d*\.?\d+", d))
 
 
 def lg(x1, y1, x2, y2, *stops):
-    return {"lg": [x1, y1, x2, y2, [[i / (len(stops) - 1), c] for i, c in enumerate(stops)]]}
+    return {"lg": [_r(x1), _r(y1), _r(x2), _r(y2), [[_r(i / (len(stops) - 1)), c] for i, c in enumerate(stops)]]}
 
 
-def _r(v):
-    return int(v) if float(v).is_integer() else round(v, 2)
-
-
-def _part(fill, kw):
-    return dict(kw, **({"fill": fill} if fill else {}))
-
-
-def ell(cx, cy, rx, ry, fill, **kw):
-    return dict(e=[_r(cx), _r(cy), _r(rx), _r(ry)], **_part(fill, kw))
-
-
-def path(d, fill, **kw):
-    d = re.sub(r"-?\d+\.\d+", lambda m: str(_r(float(m.group()))), " ".join(d.split()))
-    return dict(d=d, **_part(fill, kw))
-
-
-def leg(x, top, bottom, w, fill, stroke, paw=None, **kw):
-    """A leg hanging from (x, top): a rounded column, slightly narrower at the paw."""
-    h, b = w / 2, w / 2 - 1
-    d = (f"M {x-h} {top} L {x+h} {top} L {x+b} {bottom-b} "
-         f"Q {x+b} {bottom} {x} {bottom} Q {x-b} {bottom} {x-b} {bottom-b} Z")
-    out = [path(d, fill, stroke=stroke, sw=1.4, pivot=[x, top + 2], **kw)]
-    if paw:
-        out.append(ell(x + 1, bottom - 2.5, b + 1.5, 3.4, paw, pivot=[x, top + 2], **kw))
+def part(fill=None, **kw):
+    out = {k: v for k, v in kw.items() if v is not None}
+    if fill:
+        out["fill"] = fill
     return out
 
 
-def front(x, top, bottom, w, fill, stroke, paw, **kw):
-    """A front leg: wide at the shoulder, tapering to the paw."""
-    h, b, mid = w / 2, w * 0.36, top + (bottom - top) * 0.55
-    d = (f"M {x-h} {top} C {x-h} {mid}, {x-b} {bottom-12}, {x-b} {bottom-4} Q {x-b} {bottom} {x} {bottom} "
-         f"Q {x+b} {bottom} {x+b} {bottom-4} C {x+b} {bottom-12}, {x+h} {mid}, {x+h} {top} Z")
-    return [path(d, fill, stroke=stroke, sw=1.4, pivot=[x, top + 2], **kw),
-            ell(x + 1.5, bottom - 2.6, b + 2.2, 3.5, paw, stroke=stroke, sw=0.9, pivot=[x, top + 2], **kw)]
+def P(d, fill=None, **kw):
+    return part(fill, d=re.sub(r"-?\d+\.\d+", _num, " ".join(d.split())), **kw)
 
 
-def back(x, top, bottom, w, fill, stroke, paw, thigh=None, **kw):
-    """A hind leg: a round thigh, then a slim shin angled back to the hock and down to the paw."""
-    b = w * 0.32
-    hock = bottom - 13
-    d = (f"M {x-b-1} {top+14} C {x-b-3} {top+24}, {x-b-6} {hock-4}, {x-b-5} {hock} "
-         f"C {x-b-4} {hock+5}, {x-b-1} {bottom-4}, {x-b} {bottom-3} Q {x-b} {bottom} {x+1} {bottom} "
-         f"Q {x+b+1} {bottom} {x+b+1} {bottom-4} C {x+b} {hock+2}, {x+b+1} {hock-6}, {x+b+3} {top+16} Z")
-    return [path(d, fill, stroke=stroke, sw=1.4, pivot=[x + 2, top + 4], **kw),
-            ell(x + 2, bottom - 2.6, b + 2.6, 3.5, paw, stroke=stroke, sw=0.9, pivot=[x + 2, top + 4], **kw),
-            ell(x + 2, top + 9, w * 0.95, w * 1.15, thigh or fill, stroke=stroke, sw=1.4, pivot=[x + 2, top + 4], **kw)]
+def E(cx, cy, rx, ry, fill=None, **kw):
+    return part(fill, e=[_r(cx), _r(cy), _r(rx), _r(ry)], **kw)
 
 
-def walk(amp, per, phase):
-    return [{"rot": [amp, per, phase]}]
+def seg(a, b, wa, wb):
+    """A limb segment from a to b, wa wide at a and wb at b, with rounded ends."""
+    (x1, y1), (x2, y2) = a, b
+    L = math.hypot(x2 - x1, y2 - y1) or 1
+    ux, uy = (x2 - x1) / L, (y2 - y1) / L
+    nx, ny = -uy, ux
+    ha, hb, k = wa / 2, wb / 2, 1.33
+    p = lambda x, y: "%s %s" % (_r(x), _r(y))
+    return ("M %s L %s C %s, %s, %s L %s C %s, %s, %s Z" % (
+        p(x1 + nx * ha, y1 + ny * ha), p(x2 + nx * hb, y2 + ny * hb),
+        p(x2 + nx * hb + ux * hb * k, y2 + ny * hb + uy * hb * k),
+        p(x2 - nx * hb + ux * hb * k, y2 - ny * hb + uy * hb * k), p(x2 - nx * hb, y2 - ny * hb),
+        p(x1 - nx * ha, y1 - ny * ha),
+        p(x1 - nx * ha - ux * ha * k, y1 - ny * ha - uy * ha * k),
+        p(x1 + nx * ha - ux * ha * k, y1 + ny * ha - uy * ha * k), p(x1 + nx * ha, y1 + ny * ha)))
 
 
-# ── the cat: an orange tabby ─────────────────────────────────────────────────────────────────
-C = dict(fur="#ec9a4e", furTop="#e0853a", dark="#c2672a", far="#cf7a36", light="#fbe3c4",
-         ear="#f3a7a2", nose="#e9837f", iris="#8db63b", line="#8a4a1d")
+def swing(amp, per, ph, at):
+    return {"rot": [amp, per, ph], "at": [_r(at[0]), _r(at[1])]}
 
 
-def cat_head(cx, cy, g="head", closed=False):
-    c = C
-    parts = [
-        path(f"M {cx-19} {cy-8} L {cx-21} {cy-31} L {cx-4} {cy-17} Z", c["fur"], stroke=c["line"], sw=1.4, g=g),
-        path(f"M {cx+3} {cy-17} L {cx+19} {cy-32} L {cx+20} {cy-8} Z", c["fur"], stroke=c["line"], sw=1.4, g=g),
-        path(f"M {cx-17} {cy-11} L {cx-18} {cy-25} L {cx-8} {cy-16} Z", c["ear"], g=g),
-        path(f"M {cx+6} {cy-16} L {cx+16} {cy-26} L {cx+17} {cy-11} Z", c["ear"], g=g),
-        ell(cx, cy, 24, 21, lg(cx, cy - 21, cx, cy + 21, c["furTop"], c["fur"]), stroke=c["line"], sw=1.4, g=g),
-        # tabby stripes on the forehead
-        path(f"M {cx-6} {cy-20} Q {cx-5} {cy-13} {cx-3} {cy-10}", None, stroke=c["dark"], sw=2.2, cap=1, g=g),
-        path(f"M {cx} {cy-21} L {cx} {cy-11}", None, stroke=c["dark"], sw=2.2, cap=1, g=g),
-        path(f"M {cx+6} {cy-20} Q {cx+5} {cy-13} {cx+3} {cy-10}", None, stroke=c["dark"], sw=2.2, cap=1, g=g),
-        ell(cx - 7, cy + 8, 9, 7, c["light"], g=g),
-        ell(cx + 7, cy + 8, 9, 7, c["light"], g=g),
-    ]
+def fore_leg(c, sh, el, wr, w, colour, gait=None, lower=None):
+    """Shoulder -> elbow -> wrist -> paw. gait = (period, phase): a swing at the shoulder and a bend
+    at the elbow, the bend lagging the swing like a real stride."""
+    lower = lower or colour
+    up = [swing(18, gait[0], gait[1], sh)] if gait else None
+    lo = up + [swing(16, gait[0], gait[1] - 1.4, el)] if gait else None
+    paw = (wr[0] + w[2] * 0.55, G - w[2] * 0.42)
+    return [P(seg(sh, el, w[0], w[1]), colour, anim=up),
+            P(seg(el, wr, w[1] * 0.9, w[2]), lower, anim=lo),
+            E(paw[0], paw[1], w[2] * 0.95, w[2] * 0.48, lower, anim=lo)]
+
+
+def hind_leg(c, hip, st, hock, w, colour, gait=None, lower=None, thigh=None):
+    """Hip -> stifle -> hock -> paw: a heavy thigh, a slim gaskin angled back, the cannon to the
+    ground. Swings at the hip, folds at the stifle."""
+    lower = lower or colour
+    up = [swing(16, gait[0], gait[1], hip)] if gait else None
+    lo = up + [swing(-14, gait[0], gait[1] - 1.4, st)] if gait else None
+    paw = (hock[0] + 2, G)
+    return [P(seg(st, hock, w[1], w[2]), lower if thigh else colour, anim=lo),
+            P(seg(hock, (paw[0] + 1, G - w[3] * 0.5), w[2] * 0.95, w[3]), lower, anim=lo),
+            E(paw[0] + w[3] * 0.6, G - w[3] * 0.42, w[3] * 1.0, w[3] * 0.48, lower, anim=lo),
+            P(seg(hip, st, w[0], w[1] * 1.1), thigh or colour, anim=up)]
+
+
+def eye_profile(c, x, y, size=1.0, slit=False, closed=False, g="head", blink=(5.0, 0.0)):
+    s = size
     if closed:
-        parts += [path(f"M {cx-14} {cy-1} Q {cx-9} {cy+3} {cx-4} {cy-1}", None, stroke=c["line"], sw=1.8, cap=1, g=g),
-                  path(f"M {cx+4} {cy-1} Q {cx+9} {cy+3} {cx+14} {cy-1}", None, stroke=c["line"], sw=1.8, cap=1, g=g)]
-    else:
-        for ex in (cx - 9, cx + 9):
-            parts += [ell(ex, cy - 1, 5.2, 5.8, c["iris"], stroke=c["line"], sw=1, g=g, pivot=[ex, cy - 1], anim=[{"blink": [4.6, 0]}]),
-                      ell(ex + 0.4, cy - 1, 1.8, 4.6, "#1b1b1b", g=g, pivot=[ex, cy - 1], anim=[{"blink": [4.6, 0]}]),
-                      ell(ex + 1.7, cy - 3.2, 1.3, 1.3, "#ffffff", g=g, pivot=[ex, cy - 1], anim=[{"blink": [4.6, 0]}])]
-    parts += [
-        path(f"M {cx-3} {cy+4} L {cx+3} {cy+4} L {cx} {cy+7.5} Z", c["nose"], g=g),
-        path(f"M {cx} {cy+7.5} Q {cx-1} {cy+11} {cx-5} {cy+10.5} M {cx} {cy+7.5} Q {cx+1} {cy+11} {cx+5} {cy+10.5}",
-             None, stroke=c["line"], sw=1.2, cap=1, g=g),
-        path(f"M {cx-12} {cy+7} L {cx-30} {cy+3} M {cx-12} {cy+10} L {cx-30} {cy+11} "
-             f"M {cx+12} {cy+7} L {cx+30} {cy+3} M {cx+12} {cy+10} L {cx+30} {cy+11}",
-             None, stroke="#ffffff", sw=0.9, cap=1, g=g, alpha=0.85),
-    ]
-    return parts
+        return [P("M %s %s Q %s %s %s %s" % (x - 3.6 * s, y, x, y + 2.2 * s, x + 3.6 * s, y - 0.4 * s),
+                  stroke=c["line"], sw=1.1, cap=1, g=g)]
+    b = [{"blink": list(blink)}]
+    almond = "M %s %s Q %s %s %s %s Q %s %s %s %s Z" % (x - 3.6 * s, y, x, y - 3.4 * s, x + 3.6 * s, y - 0.5 * s,
+                                                       x, y + 2.6 * s, x - 3.6 * s, y)
+    pupil = E(x + 0.5 * s, y - 0.4 * s, 0.75 * s if slit else 1.7 * s, 2.3 * s if slit else 1.7 * s, "#120d0a",
+              g=g, pivot=[x, y], anim=b)
+    return [P(almond, c["eye"], g=g, pivot=[x, y], anim=b), pupil,
+            E(x + 1.3 * s, y - 1.4 * s, 0.6 * s, 0.6 * s, "#ffffff", g=g, pivot=[x, y], anim=b, alpha=0.9),
+            P("M %s %s Q %s %s %s %s" % (x - 3.8 * s, y + 0.1, x, y - 3.7 * s, x + 3.8 * s, y - 0.6 * s),
+              stroke=c["line"], sw=0.9, cap=1, g=g)]
 
 
-def cat_tail(base, sway, per=1.8, curl=False):
-    c = C
-    if curl:
-        d = "M 60 124 C 40 126, 34 112, 46 106 C 52 103, 56 108, 52 111 C 46 114, 50 120, 64 119 Z"
-    else:
-        d = "M 52 80 C 34 80, 20 66, 20 44 C 20 36, 30 34, 31 41 C 31 58, 40 70, 54 72 Z"
-    t = [path(d, lg(20, 40, 54, 80, c["dark"], c["fur"]), stroke=c["line"], sw=1.4, pivot=base, anim=[{"rot": [sway, per, 0]}])]
-    if not curl:
-        t += [path("M 22 50 Q 27 50 30 46", None, stroke=c["dark"], sw=2.4, cap=1, pivot=base, anim=[{"rot": [sway, per, 0]}]),
-              path("M 26 62 Q 31 61 33 56", None, stroke=c["dark"], sw=2.4, cap=1, pivot=base, anim=[{"rot": [sway, per, 0]}])]
-    return t
+def shaded_body(c, d, g=None, top=60, bottom=110):
+    """A body: a fill that is lighter along the back and darker under the belly, a thin edge."""
+    return [P(d, lg(0, top, 0, bottom, c["hi"], c["fur"], c["lo"]), stroke=c["line"], sw=0.7, g=g)]
+
+
+def H(parts, hx, hy, g="head", s=1.0):
+    """Head parts written about (0, 0), scaled by s and moved to (hx, hy)."""
+    X, Y = (lambda v: _r(v * s + hx)), (lambda v: _r(v * s + hy))
+    out = []
+    for q in parts:
+        q = dict(q)
+        if "d" in q:
+            q["d"] = shift(scale(q["d"], s), hx, hy)
+        if "e" in q:
+            q["e"] = [X(q["e"][0]), Y(q["e"][1]), _r(q["e"][2] * s), _r(q["e"][3] * s)]
+        if "pivot" in q:
+            q["pivot"] = [X(q["pivot"][0]), Y(q["pivot"][1])]
+        if "sw" in q:
+            q["sw"] = _r(q["sw"] * min(s, 1.15))
+        if "anim" in q:
+            q["anim"] = [dict(a, at=[X(a["at"][0]), Y(a["at"][1])]) if "at" in a else a for a in q["anim"]]
+        if isinstance(q.get("fill"), dict):
+            x1, y1, x2, y2, st = q["fill"]["lg"]
+            q["fill"] = {"lg": [X(x1), Y(y1), X(x2), Y(y2), st]}
+        q.setdefault("g", g)
+        out.append(q)
+    return out
+
+
+def shadow(wide=False):
+    return E(100, G + 1, 70 if wide else 58, 4.2, "#000000", alpha=0.18)
+
+
+def walk_groups(per, bob=1.0):
+    return {"all": [{"ty": [bob, per / 2, 0]}], "head": [{"ty": [bob * 0.6, per / 2, 1.0]}]}
+
+
+SIT = {"all": [], "body": [{"sy": [0.01, 3.4, 0]}], "head": [{"ty": [0.7, 3.4, 0.6]}]}
+SLEEP = {"all": [], "body": [{"sy": [0.02, 3.8, 0]}], "head": [{"ty": [0.8, 3.8, 0]}]}
+
+
+# ── the cat: a domestic orange tabby ─────────────────────────────────────────────────────────
+CAT = dict(fur="#d48a4c", hi="#e7a66b", lo="#ad6a36", cream="#f1dcbf", mark="#9a5426", line="#6d3c1a",
+           eye="#b9b04e", nose="#cf8b84", ear="#dfa197")
+
+
+def cat_head(closed=False):
+    c = CAT
+    return [P("M -8 -8 L -4 -24 L 2 -10 Z", c["lo"]),                                  # far ear
+            P("M -14 2 C -15 -8, -8 -14, 0 -14 C 8 -14, 12 -9, 15 -4 C 18 -2, 19 1, 18 3 "
+              "C 15 7, 10 9, 4 10 C -4 12, -12 10, -14 2 Z", lg(0, -14, 0, 11, c["hi"], c["fur"]), stroke=c["line"], sw=0.7),
+            P("M -4 -11 L 1 -27 L 8 -12 Z", c["fur"], stroke=c["line"], sw=0.7),             # near ear
+            P("M -1 -12.5 L 1.3 -23 L 5 -12.8 Z", c["ear"], alpha=0.85),
+            P("M 7 2 C 11 0, 16 1, 18 3 C 15 8, 9 10, 3 9 Z", c["cream"], alpha=0.95),        # muzzle
+            P("M -4 -13 Q -2 -9 -3 -5", stroke=c["mark"], sw=1.6, cap=1, alpha=0.7),          # tabby brow
+            P("M 1 -14 Q 2 -10 1 -6.5", stroke=c["mark"], sw=1.6, cap=1, alpha=0.7),
+            P("M -12 0 Q -8 -1 -5 2", stroke=c["mark"], sw=1.4, cap=1, alpha=0.6),
+            P("M 15.5 -1.5 L 19 -0.8 L 18 1.6 Z", c["nose"]),
+            P("M 17.5 3 Q 14 6.5 10.5 5.5", stroke=c["line"], sw=0.8, cap=1),
+            P("M 14 3 L 31 -1 M 14 4 L 31 4 M 13.5 5 L 30 8.5", stroke="#ffffff", sw=0.5, cap=1, alpha=0.75),
+            ] + eye_profile(c, 7, -4, 1.0, slit=True, closed=closed, g="head", blink=(4.6, 0))
+
+
+def cat_tail_up():
+    c = CAT
+    sway = [{"rot": [6, 2.2, 0], "at": [54, 80]}]
+    return [P("M 54 82 C 38 80, 27 68, 25 50 C 24 42, 29 35, 35 33 C 39 33, 40 37, 37 39 "
+              "C 33 42, 32 48, 33 54 C 35 66, 44 73, 56 75 Z", lg(25, 35, 56, 82, c["fur"], c["lo"]),
+              stroke=c["line"], sw=0.7, anim=sway),
+            P("M 27 44 Q 31 45 34 43 M 27 54 Q 31 55 34 52 M 31 64 Q 35 64 38 61", stroke=c["mark"], sw=2.2,
+              cap=1, alpha=0.7, anim=sway)]
 
 
 def cat_walk():
-    c, P = C, 0.62
-    body = path("M 46 84 C 46 63, 72 57, 100 58 C 128 59, 150 63, 151 83 C 152 101, 135 108, 100 108 C 70 108, 46 104, 46 84 Z",
-                lg(0, 58, 0, 108, c["furTop"], c["fur"]), stroke=c["line"], sw=1.4)
-    parts = cat_tail([52, 78], 9)
-    parts += front(126, 90, 129, 12, c["far"], c["line"], c["light"], anim=walk(22, P, math.pi))
-    parts += back(72, 82, 129, 13, c["far"], c["line"], c["light"], anim=walk(18, P, 0))
-    parts += [body,
-              path("M 72 104 C 90 110, 118 110, 136 101 C 124 106, 90 107, 72 104 Z", c["light"]),
-              path("M 82 60 Q 86 67 83 73", None, stroke=c["dark"], sw=3.2, cap=1),
-              path("M 98 59 Q 102 67 99 74", None, stroke=c["dark"], sw=3.2, cap=1),
-              path("M 114 60 Q 118 67 115 73", None, stroke=c["dark"], sw=3.2, cap=1),
-              ell(141, 86, 12, 17, c["light"])]
-    parts += back(58, 80, 129, 14, c["fur"], c["line"], c["light"], anim=walk(18, P, math.pi))
-    parts += front(138, 92, 129, 12.5, c["fur"], c["line"], c["light"], anim=walk(22, P, 0))
-    parts += cat_head(160, 56)
-    return {"groups": {"all": [{"ty": [1.2, P / 2, 0]}], "head": [{"ty": [1.0, P / 2, 1.2]}]}, "parts": parts}
+    c, per = CAT, 0.7
+    parts = [shadow()]
+    parts += fore_leg(c, (128, 88), (126, 106), (127, 124), (11, 7.5, 5.5), c["lo"], gait=(per, math.pi))
+    parts += hind_leg(c, (77, 86), (85, 104), (75, 118), (17, 8, 6, 5), c["lo"], gait=(per, 0))
+    parts += cat_tail_up()
+    parts += shaded_body(c, "M 50 90 C 47 76, 58 68, 76 68 C 96 68, 114 71, 128 68 C 137 66, 142 58, 147 50 "
+                            "L 160 60 C 154 70, 150 84, 145 96 C 140 105, 126 106, 116 104 C 102 102, 88 104, 76 102 "
+                            "C 63 100, 52 99, 50 90 Z", top=66, bottom=106)
+    parts += [P("M 140 66 C 147 76, 148 90, 143 100 C 138 92, 137 78, 140 66 Z", c["cream"], alpha=0.85),
+              P("M 84 69 Q 88 80 84 91 M 96 69 Q 100 81 96 93 M 108 70 Q 112 81 108 92 M 120 69 Q 123 78 120 86 "
+                "M 60 80 Q 66 87 62 95", stroke=c["mark"], sw=2.6, cap=1, alpha=0.55)]
+    parts += hind_leg(c, (66, 86), (74, 104), (64, 118), (18, 8.5, 6.5, 5.5), c["fur"], gait=(per, math.pi))
+    parts += fore_leg(c, (138, 88), (136, 106), (137, 124), (12, 8, 6), c["fur"], gait=(per, 0))
+    parts += H(cat_head(), 158, 54, s=1.2)
+    return {"groups": walk_groups(per, 0.9), "parts": parts}
 
 
 def cat_sit():
-    c = C
-    parts = [path("M 72 129 C 58 110, 66 80, 94 68 C 116 60, 134 76, 133 98 C 133 118, 124 129, 110 129 Z",
-                   lg(0, 66, 0, 129, c["furTop"], c["fur"]), stroke=c["line"], sw=1.4, g="body"),
-              ell(118, 96, 13, 20, c["light"], g="body"),
-              path("M 80 80 Q 86 86 84 93", None, stroke=c["dark"], sw=3.2, cap=1, g="body"),
-              path("M 76 95 Q 83 100 81 107", None, stroke=c["dark"], sw=3.2, cap=1, g="body"),
-              ell(86, 112, 25, 17, lg(0, 95, 0, 129, c["fur"], c["furTop"]), stroke=c["line"], sw=1.4, g="body")]
-    parts += front(112, 98, 129, 11, c["far"], c["line"], c["light"])
-    parts += front(124, 98, 129, 11.5, c["fur"], c["line"], c["light"])
-    parts += [path("M 66 124 C 86 133, 126 134, 142 125 C 147 121, 144 115, 139 118 C 126 126, 92 127, 72 118 Z",
-                   lg(66, 120, 146, 120, c["fur"], c["dark"]), stroke=c["line"], sw=1.3, pivot=[70, 122], anim=[{"rot": [1.5, 2.6, 0]}]),
-              path("M 128 124 Q 131 128 129 131", None, stroke=c["dark"], sw=2.2, cap=1, pivot=[70, 122], anim=[{"rot": [1.5, 2.6, 0]}])]
-    parts += cat_head(118, 50)
-    return {"groups": {"all": [], "body": [{"sy": [0.012, 3.2, 0]}], "head": [{"ty": [0.8, 3.2, 0.6]}]}, "parts": parts}
+    c = CAT
+    parts = [shadow()]
+    parts += fore_leg(c, (129, 94), (129, 110), (130, 124), (10, 7, 5.5), c["lo"])
+    parts += shaded_body(c, "M 66 129 C 56 118, 58 102, 74 92 C 88 82, 104 76, 118 70 C 125 67, 131 63, 134 58 "
+                            "L 148 62 C 146 74, 144 88, 142 100 C 140 113, 138 124, 134 129 Z", g="body", top=58, bottom=128)
+    parts += [P("M 136 68 C 142 80, 142 100, 138 118 C 132 104, 130 84, 136 68 Z", c["cream"], alpha=0.85, g="body"),
+              P("M 92 80 Q 98 88 94 96 M 104 72 Q 110 80 106 88 M 116 66 Q 121 73 118 80", stroke=c["mark"], sw=2.6,
+                cap=1, alpha=0.55, g="body"),
+              P("M 62 128 C 56 112, 66 96, 84 96 C 100 96, 108 108, 106 120 C 104 128, 90 130, 62 128 Z",
+                lg(0, 96, 0, 129, c["fur"], c["lo"]), stroke=c["line"], sw=0.7, g="body"),
+              P("M 72 104 Q 80 106 84 114 M 66 112 Q 74 114 78 121", stroke=c["mark"], sw=2.4, cap=1, alpha=0.5, g="body"),
+              E(110, 127.6, 8, 2.8, c["fur"], stroke=c["line"], sw=0.6)]
+    parts += fore_leg(c, (137, 94), (137, 110), (138, 124), (11, 7.5, 6), c["fur"])
+    parts += [P("M 64 126 C 80 133, 118 133, 141 127 C 147 125, 148 120, 143 121 C 124 126, 88 127, 70 120 Z",
+                lg(64, 124, 148, 124, c["lo"], c["fur"]), stroke=c["line"], sw=0.7, pivot=[70, 124],
+                anim=[{"rot": [1.2, 2.8, 0]}]),
+              P("M 100 128 Q 103 125 102 122 M 120 128 Q 123 125 122 122", stroke=c["mark"], sw=2, cap=1, alpha=0.55,
+                pivot=[70, 124], anim=[{"rot": [1.2, 2.8, 0]}])]
+    parts += H(cat_head(), 145, 54, s=1.2)
+    return {"groups": SIT, "parts": parts}
 
 
 def cat_sleep():
-    c = C
-    parts = [path("M 38 116 C 36 94, 62 84, 100 84 C 138 84, 160 96, 160 114 C 160 126, 140 130, 100 130 C 60 130, 38 128, 38 116 Z",
-                  lg(0, 84, 0, 130, c["furTop"], c["fur"]), stroke=c["line"], sw=1.4, g="body"),
-             path("M 70 88 Q 74 95 71 101", None, stroke=c["dark"], sw=3.2, cap=1, g="body"),
-             path("M 88 85 Q 92 93 89 100", None, stroke=c["dark"], sw=3.2, cap=1, g="body"),
-             path("M 106 86 Q 110 93 107 100", None, stroke=c["dark"], sw=3.2, cap=1, g="body"),
-             path("M 46 124 C 70 132, 140 134, 166 124 C 168 120, 162 117, 158 120 C 136 128, 76 127, 52 119 Z",
-                  lg(46, 120, 166, 120, c["fur"], c["dark"]), stroke=c["line"], sw=1.2, g="body"),
-             ell(150, 124, 10, 5, c["light"], stroke=c["line"], sw=1)]
-    parts += cat_head(150, 106, closed=True)
-    return {"groups": {"all": [], "body": [{"sy": [0.022, 3.6, 0]}], "head": [{"ty": [0.9, 3.6, 0]}]}, "parts": parts}
+    c = CAT
+    parts = [shadow(True)]
+    parts += shaded_body(c, "M 38 121 C 36 104, 58 94, 92 94 C 124 94, 146 102, 150 116 C 152 127, 138 130, 96 130 "
+                            "C 60 130, 40 129, 38 121 Z", g="body", top=94, bottom=130)
+    parts += [P("M 70 96 Q 74 104 70 112 M 86 94 Q 90 103 86 112 M 102 95 Q 106 103 102 111 M 118 97 Q 121 104 118 110",
+                stroke=c["mark"], sw=2.6, cap=1, alpha=0.5, g="body"),
+              P("M 44 124 C 66 133, 130 134, 158 126 C 162 123, 158 118, 153 121 C 130 128, 74 128, 50 117 Z",
+                lg(44, 120, 160, 120, c["fur"], c["lo"]), stroke=c["line"], sw=0.7, g="body"),
+              E(150, 127.4, 9, 3, c["fur"], stroke=c["line"], sw=0.6)]
+    parts += H(cat_head(closed=True), 154, 110, s=1.15)
+    return {"groups": SLEEP, "parts": parts}
 
 
-# ── the dog: a golden pup with floppy ears ───────────────────────────────────────────────────
-D = dict(fur="#dda25f", furTop="#c98a47", far="#bd8143", light="#f6e2c0", ear="#9a6233", earIn="#b57a45",
-         nose="#2a201c", tongue="#ef7d8b", iris="#5a3a22", line="#7a4a22")
+# ── the dog: a golden retriever ──────────────────────────────────────────────────────────────
+DOG = dict(fur="#c89a5c", hi="#dbb67a", lo="#9c6f38", cream="#ead2a6", line="#644220", eye="#3d2513",
+           nose="#211a17")
 
 
-def dog_head(cx, cy, g="head", closed=False, tongue=True):
-    c = D
-    parts = [
-        ell(cx, cy, 22, 20, lg(cx, cy - 20, cx, cy + 20, c["furTop"], c["fur"]), stroke=c["line"], sw=1.4, g=g),
-        ell(cx + 2, cy + 10, 14, 10.5, c["light"], stroke=c["line"], sw=1.2, g=g),
-        ell(cx + 2, cy + 4, 5.8, 4.2, c["nose"], g=g),
-        ell(cx + 3.6, cy + 2.6, 1.6, 1, "#ffffff", g=g, alpha=0.6),
-        path(f"M {cx+2} {cy+8} L {cx+2} {cy+12} M {cx+2} {cy+12} Q {cx-3} {cy+16} {cx-7} {cy+13} "
-             f"M {cx+2} {cy+12} Q {cx+7} {cy+16} {cx+11} {cy+13}", None, stroke=c["line"], sw=1.3, cap=1, g=g),
-    ]
-    if tongue and not closed:
-        parts.append(path(f"M {cx-2} {cy+14} Q {cx+2} {cy+24} {cx+6} {cy+14} Z", c["tongue"], stroke="#c45567", sw=1, g=g))
-    if closed:
-        parts += [path(f"M {cx-13} {cy-3} Q {cx-8} {cy+1} {cx-3} {cy-3}", None, stroke=c["line"], sw=1.8, cap=1, g=g),
-                  path(f"M {cx+5} {cy-3} Q {cx+10} {cy+1} {cx+15} {cy-3}", None, stroke=c["line"], sw=1.8, cap=1, g=g)]
-    else:
-        for ex in (cx - 8, cx + 10):
-            parts += [ell(ex, cy - 4, 4.4, 4.8, c["iris"], g=g, pivot=[ex, cy - 4], anim=[{"blink": [5.2, 1.3]}]),
-                      ell(ex + 1.4, cy - 5.6, 1.4, 1.4, "#ffffff", g=g, pivot=[ex, cy - 4], anim=[{"blink": [5.2, 1.3]}])]
-    # floppy ears, drawn over the head's sides, swinging a little
-    parts += [path(f"M {cx-14} {cy-16} C {cx-30} {cy-14}, {cx-32} {cy+8}, {cx-24} {cy+16} C {cx-18} {cy+20}, {cx-14} {cy+6}, {cx-12} {cy-6} Z",
-                   lg(cx - 30, cy - 16, cx - 14, cy + 18, c["ear"], c["earIn"]), stroke=c["line"], sw=1.3, g=g,
-                   pivot=[cx - 14, cy - 14], anim=[{"rot": [5, 1.4, 0]}]),
-              path(f"M {cx+16} {cy-16} C {cx+32} {cy-14}, {cx+34} {cy+8}, {cx+26} {cy+16} C {cx+20} {cy+20}, {cx+16} {cy+6}, {cx+14} {cy-6} Z",
-                   lg(cx + 14, cy - 16, cx + 32, cy + 18, c["earIn"], c["ear"]), stroke=c["line"], sw=1.3, g=g,
-                   pivot=[cx + 16, cy - 14], anim=[{"rot": [5, 1.4, 1.5]}])]
-    return parts
-
-
-def dog_tail(base, amp, per):
-    c = D
-    return [path("M 50 74 C 40 66, 32 50, 36 36 C 38 30, 46 31, 44 38 C 42 50, 48 62, 56 68 Z",
-                 lg(36, 34, 56, 74, c["far"], c["fur"]), stroke=c["line"], sw=1.4, pivot=base, anim=[{"rot": [amp, per, 0]}])]
+def dog_head(closed=False):
+    c = DOG
+    ear = [{"rot": [4, 1.8, 0], "at": [-6, -9]}]
+    return [P("M -16 4 C -17 -6, -10 -13, -1 -13 C 6 -13, 10 -10, 13 -6 C 18 -5, 24 -4, 27 -2 "
+              "C 29 1, 28 4, 26 5 C 22 8, 16 10, 10 11 C 2 14, -10 14, -16 4 Z",
+              lg(0, -13, 0, 13, c["hi"], c["fur"]), stroke=c["line"], sw=0.7),
+            P("M 10 -4 C 18 -4, 26 -3, 27 1 C 24 8, 16 10, 10 9 Z", c["cream"], alpha=0.6),
+            P("M 23.5 -4 C 27 -5.5, 30.5 -3, 30 0 C 28.8 1.8, 25.5 1.4, 24 -0.6 Z", c["nose"]),
+            P("M 27 3 Q 20 7.5 12.5 6", stroke=c["line"], sw=0.9, cap=1),
+            P("M 1 -10 Q 6 -12.5 10 -9", stroke=c["lo"], sw=1.2, cap=1, alpha=0.7),
+            P("M -7 -10 C -14 -8, -18 4, -15 16 C -13 21, -6 19, -4 12 C -2 4, -2 -6, -7 -10 Z",
+              lg(-16, -10, -2, 20, c["lo"], c["fur"]), stroke=c["line"], sw=0.7, pivot=[-6, -9], anim=ear),
+            P("M -12 2 Q -13 9 -11 14 M -9 0 Q -9 8 -7 12", stroke=c["lo"], sw=0.8, cap=1, alpha=0.6,
+              pivot=[-6, -9], anim=ear),
+            ] + eye_profile(c, 5.5, -5, 0.95, slit=False, closed=closed, g="head", blink=(5.2, 1.3))
 
 
 def dog_walk():
-    c, P = D, 0.56
-    parts = dog_tail([52, 72], 18, 0.42)
-    parts += front(128, 88, 129, 14, c["far"], c["line"], c["light"], anim=walk(24, P, math.pi))
-    parts += back(70, 80, 129, 15, c["far"], c["line"], c["light"], anim=walk(20, P, 0))
-    parts += [path("M 44 82 C 44 62, 70 56, 100 57 C 130 58, 150 62, 152 82 C 153 100, 136 106, 100 106 C 68 106, 44 102, 44 82 Z",
-                   lg(0, 57, 0, 106, c["furTop"], c["fur"]), stroke=c["line"], sw=1.4),
-              path("M 70 102 C 90 108, 118 108, 138 99 C 124 104, 90 105, 70 102 Z", c["light"]),
-              ell(142, 84, 12, 16, c["light"])]
-    parts += back(56, 78, 129, 16, c["fur"], c["line"], c["light"], anim=walk(20, P, math.pi))
-    parts += front(140, 90, 129, 14.5, c["fur"], c["line"], c["light"], anim=walk(24, P, 0))
-    parts += dog_head(160, 56)
-    return {"groups": {"all": [{"ty": [1.4, P / 2, 0]}], "head": [{"ty": [1.2, P / 2, 1.2]}]}, "parts": parts}
+    c, per = DOG, 0.62
+    parts = [shadow()]
+    parts += fore_leg(c, (134, 80), (132, 102), (133, 123), (14, 9, 7), c["lo"], gait=(per, math.pi))
+    parts += hind_leg(c, (68, 78), (78, 100), (66, 117), (21, 10.5, 8, 6.5), c["lo"], gait=(per, 0))
+    wag = [{"rot": [10, 0.55, 0], "at": [46, 76]}]
+    parts += [P("M 46 74 C 32 76, 22 88, 18 102 C 17 106, 21 107, 23 104 C 28 92, 36 86, 48 82 Z",
+                lg(18, 74, 48, 106, c["fur"], c["lo"]), stroke=c["line"], sw=0.7, anim=wag),
+              P("M 36 82 Q 30 92 26 100 M 32 80 Q 26 88 22 96", stroke=c["hi"], sw=1.6, cap=1, alpha=0.6, anim=wag)]
+    parts += shaded_body(c, "M 44 82 C 42 66, 56 58, 76 58 C 98 58, 120 60, 136 58 C 146 56, 150 48, 152 42 "
+                            "L 168 50 C 162 60, 158 74, 154 88 C 148 98, 132 98, 120 96 C 104 94, 90 96, 78 94 "
+                            "C 62 92, 46 92, 44 82 Z", top=56, bottom=98)
+    parts += [P("M 150 58 C 158 70, 158 84, 152 94 C 146 86, 145 72, 150 58 Z", c["cream"], alpha=0.7),
+              P("M 80 94 Q 94 100 108 95 M 112 96 Q 124 101 136 96", stroke=c["hi"], sw=1.4, cap=1, alpha=0.6)]
+    parts += hind_leg(c, (58, 78), (68, 100), (56, 117), (23, 11.5, 8.5, 7), c["fur"], gait=(per, math.pi))
+    parts += fore_leg(c, (144, 80), (142, 102), (143, 123), (15, 9.5, 7.5), c["fur"], gait=(per, 0))
+    parts += H(dog_head(), 164, 44, s=1.35)
+    return {"groups": walk_groups(per, 1.1), "parts": parts}
 
 
 def dog_sit():
-    c = D
-    parts = [path("M 60 126 C 44 122, 40 108, 50 104 C 56 101, 60 108, 56 112 C 54 117, 60 120, 68 120 Z",
-                  lg(40, 100, 68, 126, c["far"], c["fur"]), stroke=c["line"], sw=1.3, pivot=[64, 122], anim=[{"rot": [10, 0.6, 0]}]),
-             path("M 70 129 C 56 110, 64 78, 94 68 C 118 60, 136 76, 135 98 C 135 118, 126 129, 112 129 Z",
-                  lg(0, 66, 0, 129, c["furTop"], c["fur"]), stroke=c["line"], sw=1.4, g="body"),
-             ell(120, 94, 13, 21, c["light"], g="body"),
-             ell(86, 112, 26, 17, lg(0, 95, 0, 129, c["fur"], c["furTop"]), stroke=c["line"], sw=1.4, g="body")]
-    parts += front(113, 96, 129, 13, c["far"], c["line"], c["light"])
-    parts += front(126, 96, 129, 13.5, c["fur"], c["line"], c["light"])
-    parts += dog_head(120, 50)
-    return {"groups": {"all": [], "body": [{"sy": [0.014, 2.4, 0]}], "head": [{"ty": [1.0, 2.4, 0.6]}]}, "parts": parts}
+    c = DOG
+    parts = [shadow()]
+    parts += [P("M 52 126 C 38 128, 26 126, 18 120 C 16 118, 18 116, 21 117 C 30 121, 42 121, 54 120 Z",
+                lg(18, 118, 54, 126, c["lo"], c["fur"]), stroke=c["line"], sw=0.7, pivot=[52, 123],
+                anim=[{"rot": [6, 0.9, 0]}])]
+    parts += fore_leg(c, (134, 92), (134, 110), (135, 124), (12, 8, 6.5), c["lo"])
+    parts += shaded_body(c, "M 56 129 C 46 116, 50 98, 68 88 C 84 78, 104 72, 120 66 C 128 62, 134 56, 138 50 "
+                            "L 154 56 C 153 70, 150 86, 148 100 C 146 113, 144 124, 140 129 Z", g="body", top=50, bottom=128)
+    parts += [P("M 140 64 C 148 78, 148 100, 142 120 C 136 106, 134 80, 140 64 Z", c["cream"], alpha=0.75, g="body"),
+              P("M 50 128 C 44 110, 56 92, 76 92 C 96 92, 104 106, 102 120 C 100 128, 84 130, 50 128 Z",
+                lg(0, 92, 0, 129, c["fur"], c["lo"]), stroke=c["line"], sw=0.7, g="body"),
+              E(106, 127.5, 9, 3, c["fur"], stroke=c["line"], sw=0.6)]
+    parts += fore_leg(c, (143, 92), (143, 110), (144, 124), (13, 8.5, 7), c["fur"])
+    parts += H(dog_head(), 148, 46, s=1.35)
+    return {"groups": SIT, "parts": parts}
 
 
 def dog_sleep():
-    c = D
-    parts = [path("M 36 116 C 34 94, 62 84, 100 84 C 138 84, 160 96, 160 114 C 160 126, 140 130, 100 130 C 60 130, 36 128, 36 116 Z",
-                  lg(0, 84, 0, 130, c["furTop"], c["fur"]), stroke=c["line"], sw=1.4, g="body"),
-             path("M 40 124 C 26 127, 16 121, 20 114 C 23 109, 30 115, 42 116 Z", lg(16, 112, 42, 124, c["far"], c["fur"]), stroke=c["line"], sw=1.2,
-                  pivot=[40, 120], anim=[{"rot": [3, 3.6, 0]}]),
-             ell(146, 125, 14, 5, c["light"], stroke=c["line"], sw=1.1),
-             ell(124, 125, 12, 5, c["light"], stroke=c["line"], sw=1.1)]
-    parts += dog_head(146, 104, closed=True)
-    return {"groups": {"all": [], "body": [{"sy": [0.022, 3.6, 0]}], "head": [{"ty": [0.9, 3.6, 0]}]}, "parts": parts}
+    c = DOG
+    parts = [shadow(True)]
+    parts += shaded_body(c, "M 34 121 C 32 102, 58 92, 94 92 C 128 92, 150 100, 154 116 C 156 127, 142 130, 98 130 "
+                            "C 58 130, 36 129, 34 121 Z", g="body", top=92, bottom=130)
+    parts += [P("M 38 124 C 26 126, 16 122, 14 116 C 13 113, 16 112, 18 114 C 22 118, 30 120, 40 119 Z",
+                lg(14, 114, 40, 126, c["lo"], c["fur"]), stroke=c["line"], sw=0.7, pivot=[38, 121],
+                anim=[{"rot": [2, 3.8, 0]}]),
+              P("M 132 127 C 144 128, 160 128, 170 126 C 172 123, 168 121, 160 122 C 150 123, 140 123, 132 122 Z",
+                c["fur"], stroke=c["line"], sw=0.6)]
+    parts += H(dog_head(closed=True), 156, 110, s=1.3)
+    return {"groups": SLEEP, "parts": parts}
 
 
-
-# ── the other three share one four-legged body; each has its own head, ears, tail and colours ──
-
-def body_walk(c, P, legs, tail, head, amp=22):
-    """A walking four-legged body. legs: (far, near) colour for the legs; tail/head: part lists."""
-    far, near = legs
-    paw = c.get("paw", c["light"])
-    parts = list(tail)
-    parts += front(126, 90, 129, 12, far, c["line"], paw, anim=walk(amp, P, math.pi))
-    thighs = c.get("thighs", (None, None))
-    parts += back(72, 82, 129, 13, far, c["line"], paw, thigh=thighs[0], anim=walk(amp * 0.8, P, 0))
-    parts += [path("M 46 84 C 46 63, 72 57, 100 58 C 128 59, 150 63, 151 83 C 152 101, 135 108, 100 108 C 70 108, 46 104, 46 84 Z",
-                   lg(0, 58, 0, 108, c["furTop"], c["fur"]), stroke=c["line"], sw=1.4),
-              path("M 72 104 C 90 110, 118 110, 136 101 C 124 106, 90 107, 72 104 Z", c["light"]),
-              ell(141, 86, 12, 17, c["light"])]
-    parts += c.get("bodyMarks", [])
-    parts += back(58, 80, 129, 14, near, c["line"], paw, thigh=thighs[1], anim=walk(amp * 0.8, P, math.pi))
-    parts += front(138, 92, 129, 12.5, near, c["line"], paw, anim=walk(amp, P, 0))
-    parts += head
-    return {"groups": {"all": [{"ty": [1.2, P / 2, 0]}], "head": [{"ty": [1.0, P / 2, 1.2]}]}, "parts": parts}
+# ── the rabbit: a wild brown rabbit, that hops ───────────────────────────────────────────────
+RAB = dict(fur="#8e6d4f", hi="#a9886a", lo="#694e36", cream="#e3d4bf", line="#4b3423", eye="#25150c",
+           nose="#c7958f", ear="#c9a69a", tail="#f5f1ea")
 
 
-def body_sit(c, legs, tail, head, tail_front=False):
-    far, near = legs
-    paw = c.get("paw", c["light"])
-    parts = [] if tail_front else list(tail)
-    parts += [path("M 72 129 C 58 110, 66 80, 94 68 C 116 60, 134 76, 133 98 C 133 118, 124 129, 110 129 Z",
-                   lg(0, 66, 0, 129, c["furTop"], c["fur"]), stroke=c["line"], sw=1.4, g="body"),
-              ell(118, 96, 13, 20, c["light"], g="body")]
-    parts += c.get("sitMarks", [])
-    parts += [ell(86, 112, 25, 17, lg(0, 95, 0, 129, c.get("haunch", c["fur"]), c.get("haunch2", c["furTop"])),
-                  stroke=c["line"], sw=1.4, g="body")]
-    parts += front(112, 98, 129, 11, far, c["line"], paw)
-    parts += front(124, 98, 129, 11.5, near, c["line"], paw)
-    if tail_front:
-        parts += list(tail)
-    parts += head
-    return {"groups": {"all": [], "body": [{"sy": [0.012, 3.2, 0]}], "head": [{"ty": [0.8, 3.2, 0.6]}]}, "parts": parts}
+def rab_head(closed=False):
+    c = RAB
+    tw = [{"rot": [3, 2.6, 0], "at": [-4, -8]}]
+    ears = [P("M -6 -8 C -12 -22, -17 -40, -13 -46 C -9 -50, -5 -40, -3 -24 C -2 -16, -2 -10, -6 -8 Z",
+              lg(-16, -48, -2, -8, c["lo"], c["fur"]), stroke=c["line"], sw=0.6, anim=tw)]
+    near = [P("M -2 -9 C -6 -24, -6 -44, -1 -50 C 3 -54, 7 -44, 6 -26 C 5 -17, 3 -11, -2 -9 Z",
+              lg(-6, -52, 6, -9, c["fur"], c["hi"]), stroke=c["line"], sw=0.6, anim=tw),
+            P("M 0 -12 C -2 -26, -2 -40, 1 -45 C 3 -42, 4 -28, 3.5 -14 Z", c["ear"], alpha=0.6, anim=tw),
+            P("M -1 -49 C 2 -53, 5 -50, 6 -46", stroke="#3a2618", sw=1.6, cap=1, alpha=0.7, anim=tw)]
+    face = [P("M -12 4 C -13 -6, -6 -11, 2 -11 C 10 -11, 16 -6, 18 0 C 19 4, 16 8, 10 9 C 2 11, -8 10, -12 4 Z",
+              lg(0, -11, 0, 11, c["hi"], c["fur"]), stroke=c["line"], sw=0.7),
+            P("M 4 1 C 10 0, 16 1, 18 2 C 16 7, 10 9, 4 8 Z", c["cream"], alpha=0.8)]
+    details = [E(2.5, -2.5, 4.4, 4.2, c["cream"], alpha=0.8),
+               P("M 16.5 0 L 18.8 1 L 17 2.6 Z", c["nose"]),
+               P("M 17.5 3 Q 15 6 12 5.5", stroke=c["line"], sw=0.7, cap=1),
+               P("M 15 3 L 28 1 M 15 4 L 28 5", stroke="#ffffff", sw=0.45, cap=1, alpha=0.7)]
+    eye = ([P("M -1 -2.5 Q 2.5 -0.5 6 -2.8", stroke=c["line"], sw=1.1, cap=1)] if closed else
+           [E(2.5, -2.5, 3.3, 3.3, c["eye"], pivot=[2.5, -2.5], anim=[{"blink": [5.6, 2.0]}]),
+            E(3.7, -3.7, 0.9, 0.9, "#ffffff", pivot=[2.5, -2.5], anim=[{"blink": [5.6, 2.0]}], alpha=0.9)])
+    if closed:                                           # asleep, the ears lie back (drawn by the body)
+        return face + details + eye
+    return ears + face + near + details + eye
 
 
-def body_sleep(c, tail, head):
-    parts = [path("M 38 116 C 36 94, 62 84, 100 84 C 138 84, 160 96, 160 114 C 160 126, 140 130, 100 130 C 60 130, 38 128, 38 116 Z",
-                  lg(0, 84, 0, 130, c["furTop"], c["fur"]), stroke=c["line"], sw=1.4, g="body")]
-    parts += c.get("sleepMarks", [])
-    parts += list(tail)
-    parts += [ell(150, 125, 11, 5, c.get("paw", c["light"]), stroke=c["line"], sw=1)]
-    parts += head
-    return {"groups": {"all": [], "body": [{"sy": [0.022, 3.6, 0]}], "head": [{"ty": [0.9, 3.6, 0]}]}, "parts": parts}
-
-
-def eyes(cx, cy, dx, iris, rx, ry, closed, line, g, blink):
-    if closed:
-        return [path(f"M {cx-dx-5} {cy} Q {cx-dx} {cy+4} {cx-dx+5} {cy}", None, stroke=line, sw=1.8, cap=1, g=g),
-                path(f"M {cx+dx-5} {cy} Q {cx+dx} {cy+4} {cx+dx+5} {cy}", None, stroke=line, sw=1.8, cap=1, g=g)]
-    out = []
-    for ex in (cx - dx, cx + dx):
-        out += [ell(ex, cy, rx, ry, iris, g=g, pivot=[ex, cy], anim=[{"blink": blink}]),
-                ell(ex + rx * 0.35, cy - ry * 0.35, rx * 0.32, rx * 0.32, "#ffffff", g=g, pivot=[ex, cy], anim=[{"blink": blink}])]
-    return out
-
-
-# the bunny: soft grey, long ears that twitch, a white pom-pom tail
-B = dict(fur="#cfc6bd", furTop="#bdb2a7", far="#b3a89c", light="#f7f2ec", line="#6e6158", ear="#f1b3b6")
-
-
-def bunny_head(cx, cy, g="head", closed=False):
-    c = B
-    ears = []
-    for side, ph in ((-1, 0), (1, 1.7)):
-        x = cx + side * 7
-        ears += [path(f"M {x-5} {cy-12} C {x-9} {cy-34}, {x-5} {cy-50}, {x} {cy-50} C {x+5} {cy-50}, {x+8} {cy-34}, {x+5} {cy-12} Z",
-                      lg(x, cy - 50, x, cy - 12, c["furTop"], c["fur"]), stroke=c["line"], sw=1.3, g=g,
-                      pivot=[x, cy - 14], anim=[{"rot": [4, 2.2, ph]}]),
-                 path(f"M {x-2.5} {cy-15} C {x-5} {cy-32}, {x-2} {cy-45}, {x} {cy-45} C {x+2} {cy-45}, {x+5} {cy-32}, {x+2.5} {cy-15} Z",
-                      c["ear"], g=g, pivot=[x, cy - 14], anim=[{"rot": [4, 2.2, ph]}])]
-    parts = ears + [ell(cx, cy, 21, 19, lg(cx, cy - 19, cx, cy + 19, c["furTop"], c["fur"]), stroke=c["line"], sw=1.4, g=g),
-                    ell(cx - 6, cy + 8, 8, 6.5, c["light"], g=g), ell(cx + 6, cy + 8, 8, 6.5, c["light"], g=g)]
-    parts += eyes(cx, cy - 1, 9, "#2a2220", 4.4, 5, closed, c["line"], g, [5.0, 2.1])
-    parts += [path(f"M {cx-2.6} {cy+4} L {cx+2.6} {cy+4} L {cx} {cy+6.5} Z", "#e98d98", g=g),
-              path(f"M {cx} {cy+6.5} L {cx} {cy+9} M {cx} {cy+9} Q {cx-2} {cy+11} {cx-4} {cy+10} M {cx} {cy+9} Q {cx+2} {cy+11} {cx+4} {cy+10}",
-                   None, stroke=c["line"], sw=1.1, cap=1, g=g),
-              path(f"M {cx-10} {cy+7} L {cx-26} {cy+4} M {cx-10} {cy+10} L {cx-26} {cy+11} "
-                   f"M {cx+10} {cy+7} L {cx+26} {cy+4} M {cx+10} {cy+10} L {cx+26} {cy+11}",
-                   None, stroke="#ffffff", sw=0.8, cap=1, g=g, alpha=0.9)]
+def rab_body(hop=None):
+    """The rabbit's crouch: a round haunch, a short front. hop = period for the hopping version."""
+    c = RAB
+    hind = [swing(-22, hop, 0, (70, 100))] if hop else None
+    fore = [swing(24, hop, 0.6, (136, 102))] if hop else None
+    parts = [shadow()]
+    parts += [P(seg((128, 102), (131, 117), 7, 5), c["lo"], stroke=c["line"], sw=0.6, anim=fore),
+              P(seg((131, 117), (134, 126), 5, 4), c["lo"], stroke=c["line"], sw=0.6, anim=fore)]
+    parts += [E(52, 96, 7.5, 7, c["tail"], stroke="#d8d0c4", sw=0.6, pivot=[56, 96], anim=[{"rot": [6, 1.4, 0]}])]
+    parts += shaded_body(c, "M 52 112 C 46 96, 52 78, 70 72 C 88 66, 108 70, 122 78 C 130 82, 136 80, 142 74 "
+                            "L 150 82 C 146 92, 142 102, 136 110 C 128 118, 110 120, 96 120 C 80 120, 58 122, 52 112 Z",
+                         top=68, bottom=120)
+    parts += [P("M 120 96 C 132 96, 140 104, 136 112 C 128 114, 118 108, 120 96 Z", c["cream"], alpha=0.7),
+              P("M 58 126 C 56 108, 64 92, 80 92 C 96 92, 102 106, 98 118 C 94 126, 76 128, 58 126 Z",
+                lg(0, 92, 0, 128, c["fur"], c["lo"]), stroke=c["line"], sw=0.7, anim=hind),
+              P("M 60 126 C 70 125, 86 126, 96 128 C 98 130, 94 131, 86 131 C 74 131, 62 130, 58 129 Z",
+                c["lo"], stroke=c["line"], sw=0.6, anim=hind)]
+    parts += [P(seg((136, 102), (139, 117), 8, 5.5), c["fur"], stroke=c["line"], sw=0.6, anim=fore),
+              P(seg((139, 117), (142, 126), 5.5, 4.5), c["fur"], stroke=c["line"], sw=0.6, anim=fore),
+              E(144.5, 127.6, 4.6, 2.4, c["fur"], stroke=c["line"], sw=0.6, anim=fore)]
     return parts
 
 
-def bunny_tail(x, y, per=1.6):
-    return [ell(x, y, 9, 8.5, B["light"], stroke=B["line"], sw=1.2, pivot=[x + 6, y], anim=[{"rot": [6, per, 0]}])]
+def rab_walk():
+    per = 0.5
+    parts = rab_body(hop=per) + H(rab_head(), 156, 72)
+    return {"groups": {"all": [{"ty": [3.2, per, 0]}, {"rot": [2.5, per, 1.2], "at": [100, 128]}],
+                       "head": [{"ty": [0.8, per, 1.0]}]}, "parts": parts}
 
 
-# the fox: russet with a white chest, dark socks and ear tips, a big bushy white-tipped tail
-F = dict(fur="#e2702f", furTop="#d05d1f", far="#c9611f", light="#fff3e6", line="#7a3412", paw="#3a2a24",
-         sock="#4a3328", sockFar="#3b2920", thighs=("#c9611f", "#e2702f"))
+def rab_sit():
+    return {"groups": SIT, "parts": rab_body() + H(rab_head(), 156, 72)}
 
 
-def fox_head(cx, cy, g="head", closed=False):
-    c = F
-    parts = []
-    for x0, x1, tip in ((cx - 20, cx - 4, cx - 18), (cx + 4, cx + 20, cx + 18)):
-        top = cy - 36
-        parts += [path(f"M {x0} {cy-8} L {tip} {top} L {x1} {cy-14} Z", c["fur"], stroke=c["line"], sw=1.3, g=g),
-                  path(f"M {(x0+tip)/2+1} {(cy-8+top)/2} L {tip} {top} L {(x1+tip)/2-1} {(cy-14+top)/2} Z", "#3a2a24", g=g),
-                  path(f"M {x0+4} {cy-10} L {tip+0.5*(1 if tip < cx else -1)} {top+12} L {x1-3} {cy-14} Z", c["light"], g=g, alpha=0.9)]
-    parts += [ell(cx, cy, 22, 19, lg(cx, cy - 19, cx, cy + 19, c["furTop"], c["fur"]), stroke=c["line"], sw=1.4, g=g),
-              path(f"M {cx-21} {cy+2} C {cx-14} {cy+20}, {cx+14} {cy+20}, {cx+21} {cy+2} C {cx+12} {cy+8}, {cx+4} {cy+6}, {cx} {cy+3} "
-                   f"C {cx-4} {cy+6}, {cx-12} {cy+8}, {cx-21} {cy+2} Z", c["light"], g=g)]
-    parts += eyes(cx, cy - 2, 9, "#b8731d", 3.8, 4.4, closed, c["line"], g, [4.8, 0.6])
-    if not closed:
-        parts += [ell(cx - 9, cy - 2, 1.2, 3.4, "#1b1b1b", g=g, pivot=[cx - 9, cy - 2], anim=[{"blink": [4.8, 0.6]}]),
-                  ell(cx + 9, cy - 2, 1.2, 3.4, "#1b1b1b", g=g, pivot=[cx + 9, cy - 2], anim=[{"blink": [4.8, 0.6]}])]
-    parts += [ell(cx, cy + 6, 3.6, 2.8, "#231a16", g=g),
-              path(f"M {cx} {cy+8.8} Q {cx-3} {cy+12} {cx-6} {cy+11} M {cx} {cy+8.8} Q {cx+3} {cy+12} {cx+6} {cy+11}",
-                   None, stroke=c["line"], sw=1.1, cap=1, g=g)]
-    return parts
+def rab_sleep():
+    c = RAB
+    parts = [shadow(True)]
+    parts += [E(46, 112, 7, 6.5, c["tail"], stroke="#d8d0c4", sw=0.6, g="body")]
+    parts += shaded_body(c, "M 44 122 C 42 104, 62 94, 96 94 C 126 94, 146 102, 148 116 C 150 127, 136 130, 96 130 "
+                            "C 62 130, 46 129, 44 122 Z", g="body", top=94, bottom=130)
+    parts += H(rab_head(closed=True), 156, 112)
+    # ears laid back along the body
+    parts += [P("M 150 104 C 134 100, 112 100, 104 104 C 101 107, 110 109, 124 107 C 136 106, 144 106, 150 106 Z",
+                lg(104, 100, 150, 108, c["lo"], c["fur"]), stroke=c["line"], sw=0.6),
+              P("M 152 106 C 136 106, 116 109, 110 113 C 110 116, 118 116, 130 113 C 140 111, 148 109, 153 108 Z",
+                lg(110, 104, 153, 116, c["fur"], c["hi"]), stroke=c["line"], sw=0.6)]
+    return {"groups": SLEEP, "parts": parts}
 
 
-def fox_tail(pose):
-    c = F
-    if pose == "sit":
-        d = "M 70 122 C 92 136, 132 136, 150 124 C 156 118, 150 110, 142 114 C 126 124, 94 124, 76 112 Z"
-        tip = ell(147, 119, 8, 6.5, c["light"], pivot=[72, 118], anim=[{"rot": [1.5, 2.6, 0]}])
-        return [path(d, lg(70, 118, 150, 118, c["fur"], c["furTop"]), stroke=c["line"], sw=1.3, pivot=[72, 118],
-                     anim=[{"rot": [1.5, 2.6, 0]}]), tip]
-    if pose == "sleep":
-        d = "M 44 120 C 60 136, 130 138, 160 124 C 164 118, 158 112, 150 116 C 126 126, 70 126, 50 110 Z"
-        return [path(d, lg(44, 118, 160, 118, c["fur"], c["furTop"]), stroke=c["line"], sw=1.3, g="body"),
-                ell(156, 119, 8, 6, c["light"], g="body")]
-    d = "M 50 80 C 30 84, 8 78, 4 62 C 2 52, 12 46, 22 52 C 30 58, 38 66, 52 70 Z"
-    return [path(d, lg(4, 56, 52, 80, c["furTop"], c["fur"]), stroke=c["line"], sw=1.4, pivot=[50, 74], anim=[{"rot": [7, 1.6, 0]}]),
-            path("M 13 50 C 6 50, 2 56, 4 62 C 6 66, 10 60, 14 56 Z", c["light"], pivot=[50, 74], anim=[{"rot": [7, 1.6, 0]}])]
+# ── the red fox ──────────────────────────────────────────────────────────────────────────────
+FOX = dict(fur="#c8652a", hi="#dd8a4b", lo="#9a4a1b", cream="#f4e8d8", line="#5a2a10", eye="#d39a2b",
+           nose="#1b1512", sock="#2c211d", sockLo="#221a17", earback="#2a1f1b")
 
 
-# the panda: white with black legs, a black band over the shoulders, black ears and eye patches
-N = dict(fur="#f6f4ef", furTop="#e9e6df", far="#2b2b2e", light="#ffffff", line="#3a3a3f", paw="#1f1f22",
-         haunch="#2f2f33", haunch2="#242427")
-N["bodyMarks"] = [path("M 118 60 C 128 58, 142 62, 148 72 C 150 82, 146 96, 140 104 C 132 100, 126 86, 118 60 Z", "#2b2b2e")]
-N["sitMarks"] = [path("M 98 70 C 112 64, 130 72, 132 90 C 132 98, 128 102, 122 100 C 118 88, 108 78, 98 74 Z", "#2b2b2e", g="body")]
+def fox_head(closed=False):
+    c = FOX
+    return [P("M -9 -8 L -7 -28 L 1 -10 Z", c["lo"]),                                    # far ear
+            P("M -8.5 -24 L -7 -28 L -5.5 -23.5 Z", c["earback"]),
+            P("M -13 4 C -14 -6, -8 -12, 0 -12 C 8 -12, 13 -7, 17 -3 C 22 -1, 28 1, 31 3 "
+              "C 30 5, 26 6, 20 7 C 12 9, 2 12, -6 11 C -11 10, -13 8, -13 4 Z",
+              lg(0, -12, 0, 12, c["hi"], c["fur"]), stroke=c["line"], sw=0.7),
+            P("M 2 2 C 10 2, 20 3, 30 4 C 24 7, 12 10, 2 11 C -4 10, -6 6, 2 2 Z", c["cream"]),
+            P("M -5 -9 L -1 -31 L 7 -10 Z", c["fur"], stroke=c["line"], sw=0.7),             # near ear
+            P("M -3 -24 L -1 -31 L 1.2 -24 Z", c["earback"]),
+            P("M -2 -11 L -0.6 -24 L 4 -11 Z", c["cream"], alpha=0.85),
+            P("M 28.5 0.5 C 31 0, 33 1.5, 32.5 3.2 C 31.5 4.5, 29.5 4, 28.5 2.8 Z", c["nose"]),
+            P("M 30 4.5 Q 24 7 18 6.5", stroke=c["line"], sw=0.8, cap=1),
+            P("M 9 -3 Q 13 -1 17 -2", stroke=c["line"], sw=0.7, cap=1, alpha=0.6),
+            ] + eye_profile(c, 7, -4.5, 0.95, slit=True, closed=closed, g="head", blink=(4.8, 0.6))
 
 
-def panda_head(cx, cy, g="head", closed=False):
-    c = N
-    parts = [ell(cx - 16, cy - 15, 7.5, 7, "#1f1f22", g=g), ell(cx + 16, cy - 15, 7.5, 7, "#1f1f22", g=g),
-             ell(cx, cy, 23, 20, lg(cx, cy - 20, cx, cy + 20, "#ffffff", c["furTop"]), stroke=c["line"], sw=1.4, g=g),
-             path(f"M {cx-14} {cy-8} C {cx-4} {cy-10}, {cx-2} {cy+2}, {cx-6} {cy+5} C {cx-12} {cy+8}, {cx-18} {cy+2}, {cx-14} {cy-8} Z",
-                  "#26262a", g=g),
-             path(f"M {cx+14} {cy-8} C {cx+4} {cy-10}, {cx+2} {cy+2}, {cx+6} {cy+5} C {cx+12} {cy+8}, {cx+18} {cy+2}, {cx+14} {cy-8} Z",
-                  "#26262a", g=g)]
-    if closed:
-        parts += [path(f"M {cx-12} {cy-1} Q {cx-8} {cy+2} {cx-5} {cy-1}", None, stroke="#ffffff", sw=1.5, cap=1, g=g),
-                  path(f"M {cx+5} {cy-1} Q {cx+8} {cy+2} {cx+12} {cy-1}", None, stroke="#ffffff", sw=1.5, cap=1, g=g)]
-    else:
-        for ex in (cx - 8.5, cx + 8.5):
-            parts += [ell(ex, cy - 1, 3.2, 3.4, "#ffffff", g=g, pivot=[ex, cy - 1], anim=[{"blink": [5.4, 3.0]}]),
-                      ell(ex + 0.4, cy - 0.8, 1.8, 2.2, "#121214", g=g, pivot=[ex, cy - 1], anim=[{"blink": [5.4, 3.0]}])]
-    parts += [ell(cx, cy + 7, 4, 2.8, "#1f1f22", g=g),
-              path(f"M {cx} {cy+9.6} L {cx} {cy+12} M {cx} {cy+12} Q {cx-3} {cy+14} {cx-5} {cy+12.5} "
-                   f"M {cx} {cy+12} Q {cx+3} {cy+14} {cx+5} {cy+12.5}", None, stroke=c["line"], sw=1.1, cap=1, g=g)]
-    return parts
+def fox_walk():
+    c, per = FOX, 0.66
+    parts = [shadow()]
+    parts += fore_leg(c, (128, 84), (127, 104), (128, 124), (10, 6.5, 5), c["lo"], gait=(per, math.pi), lower=c["sockLo"])
+    parts += hind_leg(c, (72, 84), (81, 103), (70, 118), (16, 7.5, 5.5, 4.8), c["lo"], gait=(per, 0),
+                      lower=c["sockLo"], thigh=c["lo"])
+    sway = [{"rot": [5, 1.8, 0], "at": [48, 84]}]
+    parts += [P("M 48 80 C 30 80, 14 86, 6 98 C 2 104, 4 110, 10 108 C 18 104, 30 94, 48 90 Z",
+                lg(4, 80, 48, 110, c["fur"], c["lo"]), stroke=c["line"], sw=0.7, anim=sway),
+              P("M 14 92 C 8 96, 3 102, 5 107 C 7 110, 12 107, 15 103 Z", c["cream"], anim=sway),
+              P("M 40 84 Q 28 86 18 92", stroke=c["hi"], sw=1.6, cap=1, alpha=0.5, anim=sway)]
+    parts += shaded_body(c, "M 46 86 C 44 74, 56 66, 74 66 C 94 66, 116 68, 130 66 C 139 64, 145 56, 150 48 "
+                            "L 162 56 C 156 66, 152 80, 147 92 C 142 100, 128 100, 118 98 C 104 96, 90 98, 78 98 "
+                            "C 64 96, 48 96, 46 86 Z", top=64, bottom=100)
+    parts += [P("M 144 64 C 152 72, 152 86, 146 96 C 140 88, 140 74, 144 64 Z", c["cream"]),
+              P("M 82 98 C 96 101, 116 100, 132 96 C 120 102, 96 103, 82 98 Z", c["cream"], alpha=0.6)]
+    parts += hind_leg(c, (60, 84), (69, 103), (58, 118), (17, 8, 6, 5), c["fur"], gait=(per, math.pi),
+                      lower=c["sock"], thigh=c["fur"])
+    parts += fore_leg(c, (138, 84), (137, 104), (138, 124), (11, 7, 5.5), c["fur"], gait=(per, 0), lower=c["sock"])
+    parts += H(fox_head(), 162, 48, s=1.12)
+    return {"groups": walk_groups(per, 0.9), "parts": parts}
 
 
-def panda_tail(x, y):
-    return [ell(x, y, 7, 6, "#ffffff", stroke=N["line"], sw=1.1, pivot=[x + 4, y], anim=[{"rot": [5, 2.0, 0]}])]
+def fox_sit():
+    c = FOX
+    parts = [shadow()]
+    parts += fore_leg(c, (129, 94), (129, 110), (130, 124), (9.5, 6.5, 5), c["lo"], lower=c["sockLo"])
+    parts += shaded_body(c, "M 66 129 C 56 118, 58 102, 74 92 C 88 82, 104 76, 118 70 C 125 67, 131 63, 134 58 "
+                            "L 148 62 C 146 74, 144 88, 142 100 C 140 113, 138 124, 134 129 Z", g="body", top=58, bottom=128)
+    parts += [P("M 134 66 C 144 78, 144 100, 138 120 C 130 104, 128 82, 134 66 Z", c["cream"], g="body"),
+              P("M 62 128 C 56 112, 66 96, 84 96 C 100 96, 108 108, 106 120 C 104 128, 90 130, 62 128 Z",
+                lg(0, 96, 0, 129, c["fur"], c["lo"]), stroke=c["line"], sw=0.7, g="body"),
+              E(110, 127.6, 7.5, 2.7, c["sock"], stroke=c["line"], sw=0.6)]
+    parts += fore_leg(c, (137, 94), (137, 110), (138, 124), (10.5, 7, 5.5), c["fur"], lower=c["sock"])
+    # the brush, curled round the front paws, white tip forward
+    parts += [P("M 62 124 C 82 136, 124 136, 150 126 C 158 122, 156 114, 148 116 C 126 124, 90 124, 70 114 Z",
+                lg(62, 120, 156, 120, c["lo"], c["fur"]), stroke=c["line"], sw=0.7, pivot=[68, 120],
+                anim=[{"rot": [1.2, 2.8, 0]}]),
+              P("M 146 116 C 154 113, 160 118, 156 124 C 152 128, 146 127, 144 124 Z", c["cream"], pivot=[68, 120],
+                anim=[{"rot": [1.2, 2.8, 0]}])]
+    parts += H(fox_head(), 144, 48, s=1.12)
+    return {"groups": SIT, "parts": parts}
 
 
-def shadowed(pose, wide=False):
-    """A soft shadow under the pet, so it stands on the screen rather than floating over it."""
-    pose["parts"].insert(0, ell(100, 131, 66 if wide else 56, 4.5, "#000000", alpha=0.16))
-    return pose
+def fox_sleep():
+    c = FOX
+    parts = [shadow(True)]
+    parts += shaded_body(c, "M 40 121 C 38 104, 60 94, 94 94 C 126 94, 146 102, 150 116 C 152 127, 138 130, 96 130 "
+                            "C 60 130, 42 129, 40 121 Z", g="body", top=94, bottom=130)
+    parts += H(fox_head(closed=True), 154, 110)
+    # the brush laid over the nose, as foxes sleep
+    parts += [P("M 44 122 C 64 136, 128 138, 170 122 C 176 118, 172 110, 164 114 C 132 128, 76 128, 50 110 Z",
+                lg(44, 116, 176, 116, c["lo"], c["fur"]), stroke=c["line"], sw=0.7, g="body"),
+              P("M 162 113 C 170 108, 178 112, 174 120 C 170 125, 164 124, 162 120 Z", c["cream"], g="body")]
+    return {"groups": SLEEP, "parts": parts}
 
 
-B["paw"] = B["light"]
+# ── the giant panda ──────────────────────────────────────────────────────────────────────────
+PAN = dict(fur="#efebe3", hi="#faf8f3", lo="#cdc7bb", black="#1e1d20", blackHi="#36343a", line="#3a383d",
+           eye="#2a2420")
+
+
+def pan_head(closed=False):
+    c = PAN
+    return [E(6, -16, 5.2, 5, c["black"]),                                              # far ear
+            P("M -14 2 C -15 -10, -6 -16, 4 -16 C 14 -16, 20 -8, 21 0 C 22 6, 18 10, 12 11 "
+              "C 2 13, -10 12, -14 2 Z", lg(0, -16, 0, 12, c["hi"], c["fur"], c["lo"]), stroke=c["line"], sw=0.7),
+            E(-6, -14.5, 6.6, 6.4, lg(-6, -21, -6, -8, c["blackHi"], c["black"])),           # near ear
+            P("M 3 -8 C 9 -11, 14 -6, 12.5 -0.5 C 11 4, 4 3, 2.5 -2 C 1.8 -4.5, 1.6 -6.6, 3 -8 Z", c["black"]),
+            P("M 14 2 C 17 0, 21 0, 22 2.5 C 21.5 4.5, 18.5 5.2, 15.5 4.3 Z", c["black"]),
+            P("M 19 5 Q 15 8.5 10 7.5", stroke=c["line"], sw=0.9, cap=1),
+            ] + ([P("M 5 -3 Q 8 -1 11 -3.5", stroke="#cfcac0", sw=1.1, cap=1)] if closed else
+                 [E(8, -3.5, 1.9, 1.9, "#100e0d", pivot=[8, -3.5], anim=[{"blink": [5.4, 3.0]}]),
+                  E(8.7, -4.2, 0.6, 0.6, "#ffffff", pivot=[8, -3.5], anim=[{"blink": [5.4, 3.0]}], alpha=0.9)])
+
+
+def pan_walk():
+    c, per = PAN, 0.8
+    parts = [shadow(True)]
+    parts += fore_leg(c, (130, 96), (130, 112), (131, 125), (16, 12.5, 10), c["black"], gait=(per, math.pi))
+    parts += hind_leg(c, (72, 96), (80, 110), (72, 121), (20, 12.5, 10, 9), c["black"], gait=(per, 0))
+    parts += [E(40, 86, 6, 5, c["fur"], stroke=c["lo"], sw=0.6)]
+    parts += shaded_body(c, "M 40 92 C 36 72, 52 58, 76 58 C 100 58, 122 60, 138 62 C 148 64, 154 66, 158 70 "
+                            "L 166 82 C 160 92, 156 100, 150 106 C 142 112, 124 112, 110 110 C 94 108, 76 110, 62 108 "
+                            "C 46 106, 42 102, 40 92 Z", top=58, bottom=112)
+    parts += [P("M 112 60 C 124 58, 140 60, 152 66 C 157 80, 153 96, 147 110 C 136 106, 122 88, 112 60 Z",
+                lg(112, 60, 150, 110, c["blackHi"], c["black"]))]
+    parts += hind_leg(c, (58, 96), (66, 110), (58, 121), (22, 13.5, 11, 10), c["black"], gait=(per, math.pi))
+    parts += fore_leg(c, (142, 96), (142, 112), (143, 125), (18, 13.5, 11), c["black"], gait=(per, 0))
+    parts += H(pan_head(), 164, 76, s=1.25)
+    return {"groups": walk_groups(per, 1.3), "parts": parts}
+
+
+def pan_sit():
+    c = PAN
+    parts = [shadow(True)]
+    parts += shaded_body(c, "M 60 129 C 48 116, 52 90, 74 74 C 90 64, 112 62, 126 66 C 136 70, 140 82, 140 96 "
+                            "C 140 112, 132 124, 120 129 Z", g="body", top=62, bottom=129)
+    parts += [P("M 92 66 C 108 60, 126 64, 136 74 C 140 86, 138 100, 132 108 C 122 100, 106 84, 92 66 Z",
+                lg(92, 60, 136, 108, c["blackHi"], c["black"]), g="body")]
+    # hind legs stretched forward, as pandas sit; forelegs down in front
+    parts += [P(seg((80, 118), (118, 124), 20, 14), c["black"]),
+              E(124, 120, 8, 9.5, c["blackHi"]),
+              P(seg((126, 96), (130, 122), 14, 11), c["black"]),
+              E(132, 125, 8, 4.5, c["black"])]
+    parts += H(pan_head(), 122, 66, s=1.3)
+    return {"groups": SIT, "parts": parts}
+
+
+def pan_sleep():
+    c = PAN
+    parts = [shadow(True)]
+    parts += shaded_body(c, "M 36 120 C 34 100, 58 90, 94 90 C 128 90, 150 98, 154 114 C 156 126, 142 130, 98 130 "
+                            "C 58 130, 38 129, 36 120 Z", g="body", top=90, bottom=130)
+    parts += [P("M 108 92 C 122 90, 140 94, 150 104 C 150 116, 144 124, 136 128 C 126 120, 114 104, 108 92 Z",
+                lg(108, 90, 150, 128, c["blackHi"], c["black"]), g="body"),
+              P(seg((60, 124), (40, 126), 16, 13), c["black"]),
+              P(seg((140, 126), (170, 127), 13, 11), c["black"])]
+    parts += H(pan_head(closed=True), 162, 110, s=1.2)
+    return {"groups": SLEEP, "parts": parts}
+
 
 RIG = {"box": [200, 140], "pets": {
     "cat": {"walk": cat_walk(), "sit": cat_sit(), "sleep": cat_sleep()},
     "dog": {"walk": dog_walk(), "sit": dog_sit(), "sleep": dog_sleep()},
-    "bunny": {"walk": body_walk(B, 0.5, (B["far"], B["fur"]), bunny_tail(48, 80), bunny_head(158, 60), amp=26),
-              "sit": body_sit(B, (B["far"], B["fur"]), bunny_tail(72, 120), bunny_head(118, 54)),
-              "sleep": body_sleep(B, bunny_tail(42, 116), bunny_head(150, 108, closed=True))},
-    "fox": {"walk": body_walk(F, 0.6, (F["sockFar"], F["sock"]), fox_tail("walk"), fox_head(160, 58)),
-            "sit": body_sit(F, (F["sockFar"], F["sock"]), fox_tail("sit"), fox_head(118, 52), tail_front=True),
-            "sleep": body_sleep(F, fox_tail("sleep"), fox_head(150, 108, closed=True))},
-    "panda": {"walk": body_walk(N, 0.7, (N["far"], "#2f2f33"), panda_tail(48, 78), panda_head(160, 58), amp=18),
-              "sit": body_sit(N, (N["far"], "#2f2f33"), panda_tail(66, 122), panda_head(118, 52)),
-              "sleep": body_sleep(N, panda_tail(40, 116), panda_head(150, 108, closed=True))},
+    "bunny": {"walk": rab_walk(), "sit": rab_sit(), "sleep": rab_sleep()},
+    "fox": {"walk": fox_walk(), "sit": fox_sit(), "sleep": fox_sleep()},
+    "panda": {"walk": pan_walk(), "sit": pan_sit(), "sleep": pan_sleep()},
 }}
-for _kind in RIG["pets"].values():
-    for _name, _pose in _kind.items():
-        shadowed(_pose, wide=_name == "sleep")
 
 
 def write():

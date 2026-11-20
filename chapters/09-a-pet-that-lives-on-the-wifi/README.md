@@ -66,15 +66,20 @@ and Windows may ask about the firewall. Allow it: that's how the helper reaches 
 
 ## On the screen
 
-**What it looks like.** An illustrated pet, not pixels, and five to choose from: an orange
-tabby cat with green eyes and whiskers, a golden pup with floppy ears and a pink tongue, a grey
-bunny with tall twitching ears and a pom-pom tail, a russet fox with dark socks and a big
-white-tipped tail, and a panda with its eye patches. Each stands on a soft shadow. It's drawn from smooth
-shapes with soft shading, so it stays sharp at any size. It's alive in small ways: legs stride
-when it walks, the tail sways (or wags, for the dog), the ears swing, it blinks, and it breathes
-when it sits or sleeps. Each pose is a **rig**: a list of shapes, and how each one moves around
-its own pivot. The phone page and the desktop helper draw the *same* rig data, one on a canvas
-and one with Qt, so they always match.
+**What it looks like.** Five animals drawn as naturalistic illustrations, the way a field guide
+would: a domestic orange tabby, a golden retriever, a wild brown rabbit, a red fox and a giant
+panda. Each is in side profile with the animal's real proportions — the cat's small head and
+long tail, the retriever's long muzzle and drop ear, the rabbit's round haunch and tall ears, the
+fox's slender black-socked legs and white-tipped brush, the panda's black shoulders and eye
+patches. They're shaded rather than outlined: lighter along the back, darker under the belly.
+Legs are jointed (shoulder, elbow and wrist in front; hip, stifle and hock behind) and move in a
+real trot; the rabbit hops. Otherwise they're still in small ways: they blink, breathe, flick an
+ear, sway a tail. Each stands on a soft shadow.
+
+Each pose is a **rig**: a list of shapes, and how each one moves about its own joint, so a lower
+leg swings with the upper leg and then bends at the knee. The phone page and the desktop helper
+draw the *same* rig data, one on a canvas and one with Qt, so they always match. It's all drawn
+from shapes, so it stays sharp at any size, and the whole of it is about 50 KB.
 
 **How big it is.** Medium by default (about 120 px tall). The **Size on screen** slider on the
 phone page goes from small (70 px) to huge (240 px). The board keeps the setting, and every
@@ -178,7 +183,7 @@ src/pet/files.h        GENERATED: the helper and installers, for the board to se
 src/pet/wifi_setup.h, improv.h, ui.h   home WiFi or its own network (shared with chapters 7, 8)
 helper/devkit_pet.py   the desktop helper
 helper/install.sh, install.ps1, uninstall.sh, uninstall.ps1
-helper/art.py          the five pets as rigs of shapes; writes them into the helper and the page
+helper/art.py          the five pets, drawn as rigs of shapes; writes them into the helper and the page
 helper/embed.py        regenerates files.h — run it after changing anything in helper/
 ```
 
@@ -209,8 +214,8 @@ partition; every `.h` sits beside the `.ino`.
 ## Verified, and not
 
 Compiled against arduino-esp32 **3.3.11** for ESP32 Dev Module on the default partition, with no
-warnings from the sketch: **1,133,476 bytes — 86% of 1.31 MB** (the helper and installers it
-serves, with all five pets' drawings, are about 75 KB of that), globals at **15% of RAM**.
+warnings from the sketch: **1,151,268 bytes — 87% of 1.31 MB** (the helper and installers it
+serves, with all five pets' drawings, are about 90 KB of that), globals at **15% of RAM**.
 
 **The pet's life and its moves**, on a laptop, one rule at a time: hungry after a working
 morning, fed back up, refusing food when full; dozing at night, staying up when woken by hand
