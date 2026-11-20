@@ -1,9 +1,9 @@
 # 8 · Ludo
 
 > **Needs:** one ESP32 DevKit V1, and two to four phones to play (plus any number to watch).
-> **Status:** compiles against the core, and the whole rule engine is tested on a laptop —
-> including twenty thousand random games played to the end — with the board rendered and checked
-> in a browser (figures below). Not yet flashed.
+> **Status:** flashed and played on a real board with real phones. The rule engine is tested on a
+> laptop — twenty thousand random games played to the end — and the page is checked in a browser
+> at phone and desktop sizes.
 
 The game everyone knows, refereed by the board. One phone creates a room and gets a four-letter
 code; up to three more join, and anyone else can **watch**. The board is the only thing that
@@ -84,6 +84,20 @@ capture, then the furthest-along token. It's the same idea as the clocks in the 
 and here it earns its keep, because the classic way a Ludo game dies is one person taking
 forever while everyone drifts off.
 
+## The page
+
+- **A panel for each player, around the board** — two above, two below, each with the player's
+  colour, name and how many tokens are home. The panel whose turn it is lights up, with a thin bar
+  along its bottom counting down the turn clock.
+- **The die sits in your own panel.** When it's your turn it breathes; tap it and it tumbles for a
+  moment before landing on the number the board rolled. The number stays up while you choose a
+  token, so you always see what you got. A roll with no legal move lingers briefly, so nobody
+  misses it.
+- **Tokens hop square by square** along the track, around corners, instead of sliding across the
+  board. Tokens you can move get a ring; two on one square sit side by side; finished tokens line up
+  in their colour's triangle in the centre.
+- **Only the seated colours have pieces.** In a two-player game the other two bases stay empty.
+
 ## Reactions, and watching
 
 - **Emojis.** A row of reactions — 😂 🔥 😮 😎 😭 👏 🎲 💀 — that pop over the thrower's corner
@@ -109,9 +123,9 @@ forever while everyone drifts off.
 | `/create` | POST | `n`, `m` | new room, `m`=0 classic / 1 quick → `{code, token, seat}` |
 | `/join` | POST | `c`, `n`, `t` | take a seat; with a known token, the same seat back |
 | `/watch` | POST | `c` | a read-only viewer token |
-| `/state` | GET | `c`, `t` | the whole game, from this seat's (or a viewer's) point of view |
+| `/state` | GET | `c`, `t` | the whole game, from this seat's (or a viewer's) point of view, with the last roll |
 | `/start` | POST | `c`, `t` | the host, with two or more seated |
-| `/roll` | POST | `c`, `t` | roll the die (and auto-play the move if there's only one) |
+| `/roll` | POST | `c`, `t` | roll the die; the page then shows the number and you tap a token |
 | `/move` | POST | `c`, `t`, `k` | move token `k` |
 | `/again` | POST | `c`, `t` | after a game, start the next |
 | `/emoji` | POST | `c`, `t`, `e` | fling reaction `e` |
@@ -151,7 +165,7 @@ Then open the page on two to four phones, create a room, and start. Put it on a 
 ## Verified, and not
 
 Compiled against arduino-esp32 **3.3.11** for ESP32 Dev Module on the default partition, with no
-warnings from the sketch: **1,010,000 bytes — 77% of 1.31 MB**, globals at **15% of RAM**.
+warnings from the sketch: **1,015,468 bytes — 77% of 1.31 MB**, globals at **15% of RAM**.
 
 **The rule engine**, on a laptop, is where the real checking is. First the rules one at a time:
 a six needed to leave base, a capture sending an opponent home, a safe star and a two-token
@@ -162,14 +176,15 @@ count conserved on every single move, no game ever looping without end (the long
 turns), and every winner's tokens all genuinely home. Captures happened 81,000 times across
 those games.
 
-**The board**, rendered in a browser from a mid-game state: the four bases, the ring with its
-coloured starts and safe stars, the home columns, the pinwheel centre, and the tokens placed from
-the same progress numbers the engine uses — all correct, with the movable token ringed. The
-page's script passed its syntax check.
+**The page**, rendered in a browser at phone and desktop widths from lobby, mid-game, two-player,
+late-game and win states: the ring, starts, stars, home columns, the turn arrows and the centre
+all where they belong, tokens placed from the same progress numbers the engine uses, stacked and
+finished tokens laid out cleanly, and no sideways overflow. The die animation and the
+square-by-square hop were checked by driving one state into the next.
 
-**Not yet confirmed on hardware:** all of it on a real board and real phones — four players at
-once, the die on the board's own random generator, the turn clock playing for a slow player, the
-emojis and the spectator view, and the fallback to `devkit-ludo`.
+**On hardware:** flashed and played to a win on a real board and phones. Still worth a longer
+session: four phones at once, the turn clock playing for a slow player, and the spectator view on
+a TV.
 
 ## Sources
 
