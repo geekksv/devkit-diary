@@ -87,7 +87,6 @@ DESK
   if [ "$(uname)" = "Darwin" ]; then
     echo "If macOS asks to let Python find devices on your local network, click Allow."
   fi
-  echo "To remove it later:  curl -fsSL http://$GOT/u | sh"
 }
 
 main "$@"

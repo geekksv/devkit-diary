@@ -11,7 +11,7 @@
 #include <stdint.h>
 #include <string.h>
 
-enum { PET_CAT = 0, PET_DOG = 1 };
+enum { PET_CAT = 0, PET_DOG = 1, PET_BUNNY = 2, PET_FOX = 3, PET_PANDA = 4, PET_KINDS = 5 };
 enum { PET_MAX_DEV = 8, PET_NAME = 12, PET_DEV_NAME = 24, PET_ID = 8 };
 static const uint32_t PET_GONE_MS = 10000;        // a computer this quiet is treated as gone
 static const float PET_WAKE_HOLD_S = 20 * 60;     // woken by hand: no dozing off again for 20 min
@@ -23,7 +23,7 @@ enum { ACT_OK = 0, ACT_ASLEEP, ACT_FULL, ACT_TIRED, ACT_NOPET, ACT_UNKNOWN };
 
 struct PetLife {
   bool adopted;
-  uint8_t kind;                    // PET_CAT or PET_DOG
+  uint8_t kind;                    // PET_CAT .. PET_PANDA
   char name[PET_NAME + 1];
   float hunger;                    // 0 starving .. 100 full
   float happy;                     // 0 .. 100
@@ -56,7 +56,7 @@ static inline float petClamp(float v) { return v < 0 ? 0 : v > 100 ? 100 : v; }
 static inline void petAdopt(PetWorld &w, uint8_t kind, const char *name) {
   memset(&w.pet, 0, sizeof w.pet);
   w.pet.adopted = true;
-  w.pet.kind = kind == PET_DOG ? PET_DOG : PET_CAT;
+  w.pet.kind = kind < PET_KINDS ? kind : PET_CAT;
   strncpy(w.pet.name, name, PET_NAME);
   w.pet.hunger = 80; w.pet.happy = 80; w.pet.energy = 80;
   w.evId++; w.evKind = EV_ADOPT;

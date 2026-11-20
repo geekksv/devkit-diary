@@ -2,13 +2,15 @@
 
 > **Needs:** one ESP32 DevKit V1, a phone, and one or more computers (macOS, Windows or Linux)
 > on the same WiFi.
-> **Status:** compiles against the core. The pet's life and its moves between computers are
-> tested on a laptop over a simulated week. The desktop helper, the installer and the phone page
-> are tested end to end against a stand-in board (figures below). Not yet flashed.
+> **Status:** flashed, and running on a real board with real computers checking in. The pet's
+> life and its moves between computers are tested on a laptop over a simulated week; the desktop
+> helper, the installer and the phone page are tested end to end against a stand-in board
+> (figures below).
 
-A cat or a dog that walks along the bottom of your computer screen, over whatever you have
-open. Now and then it wanders off the edge, and turns up walking in on **another computer**
-in the house. Its hunger, happiness and energy run on the board, and so does the one thing that
+A pet that lives on your computer screen, over whatever you have open — a **cat, a dog, a
+bunny, a fox or a panda**. Put it wherever you like and it stays there, breathing, blinking,
+looking about. Every few minutes it gets up, walks off the edge, and turns up walking in on
+**another computer** in the house, to its spot there. Its hunger, happiness and energy run on the board, and so does the one thing that
 makes it a pet rather than a screensaver: it is in **one place at a time**. A phone opens its page
 to adopt it, feed it, play, put it to bed, or call it to a particular screen.
 
@@ -64,8 +66,10 @@ and Windows may ask about the firewall. Allow it: that's how the helper reaches 
 
 ## On the screen
 
-**What it looks like.** An illustrated pet, not pixels: an orange tabby cat with green eyes,
-stripes and whiskers, or a golden pup with floppy ears and a pink tongue. It's drawn from smooth
+**What it looks like.** An illustrated pet, not pixels, and five to choose from: an orange
+tabby cat with green eyes and whiskers, a golden pup with floppy ears and a pink tongue, a grey
+bunny with tall twitching ears and a pom-pom tail, a russet fox with dark socks and a big
+white-tipped tail, and a panda with its eye patches. Each stands on a soft shadow. It's drawn from smooth
 shapes with soft shading, so it stays sharp at any size. It's alive in small ways: legs stride
 when it walks, the tail sways (or wags, for the dog), the ears swing, it blinks, and it breathes
 when it sits or sleeps. Each pose is a **rig**: a list of shapes, and how each one moves around
@@ -76,14 +80,23 @@ and one with Qt, so they always match.
 phone page goes from small (70 px) to huge (240 px). The board keeps the setting, and every
 computer resizes the pet within a second. It walks at a speed that matches its size.
 
-- It **walks** along the bottom of the main screen, above the Dock or taskbar, stops to **sit**,
-  and walks on. Its window is only as big as the pet, so it never blocks a click anywhere else,
-  and it never takes the keyboard focus.
-- **Click it** to stroke it (hearts). **Drag it** to pick it up and drop it (it falls back to the
-  floor). **Right-click** for its page, *Send to another computer*, *Pause here for 15 minutes*,
-  or *Quit*.
-- **Asleep**, it lies down with a drifting *z Z*. **Hungry**, it says so with a little 🐟 or 🦴
-  bubble now and then.
+**Where it is: wherever you put it.** Each computer has the pet's own **spot**, bottom right
+until you choose. **Drag it** anywhere — the middle of the screen, the right edge, up on top of
+a window — and let go: it stays exactly there, and that's its spot on that computer from now on
+(remembered in `~/.devkit-pet/spot`). It doesn't wander about. While it stays, it does small
+things: breathes, blinks, sways its tail, turns to look the other way, does a little hop.
+
+**It only walks to travel.** Every three to ten minutes, if another computer is online, it gets
+up, walks from its spot to the nearer edge of the screen, and goes. On the next computer it walks
+in from the opposite edge to *its spot there*, and settles. With no other computer online, it
+never walks at all. You can catch it as it sets off and drop it back: that cancels the trip.
+
+- Its window is only as big as the pet, so it never blocks a click anywhere else, and it never
+  takes the keyboard focus.
+- **Click it** to stroke it (hearts). **Right-click** for its page, *Send to another computer*,
+  *Pause here for 15 minutes*, or *Quit*.
+- **Asleep**, it lies down on its spot with a drifting *z Z*. **Hungry**, it asks with its
+  favourite food in a bubble now and then: 🐟 🦴 🥕 🍗 🎋.
 - What you do on the phone shows up on the screen where it is: hearts when stroked, a bite to
   eat, a few jumps when you play.
 - On a Mac it shows on **every desktop and over full-screen apps**, and it has no Dock icon.
@@ -143,7 +156,7 @@ minutes and after anything you do, so a power cut costs it at most five minutes 
 |---|---|---|---|
 | `/` | GET | — | the phone page |
 | `/state` | GET | — | the pet, and every computer it could be on |
-| `/adopt` | POST | `n`, `k` | a new pet: name, and `k`=0 cat / 1 dog |
+| `/adopt` | POST | `n`, `k` | a new pet: name, and `k`=0 cat, 1 dog, 2 bunny, 3 fox, 4 panda |
 | `/act` | POST | `a` | `feed`, `pet`, `play`, `sleep` or `wake` |
 | `/call` | POST | `i` | bring the pet to computer `i` |
 | `/size` | POST | `v` | how tall it stands on screen, 70–240 px |
@@ -165,7 +178,7 @@ src/pet/files.h        GENERATED: the helper and installers, for the board to se
 src/pet/wifi_setup.h, improv.h, ui.h   home WiFi or its own network (shared with chapters 7, 8)
 helper/devkit_pet.py   the desktop helper
 helper/install.sh, install.ps1, uninstall.sh, uninstall.ps1
-helper/art.py          the cat and dog as rigs of shapes; writes them into the helper and the page
+helper/art.py          the five pets as rigs of shapes; writes them into the helper and the page
 helper/embed.py        regenerates files.h — run it after changing anything in helper/
 ```
 
@@ -196,8 +209,8 @@ partition; every `.h` sits beside the `.ino`.
 ## Verified, and not
 
 Compiled against arduino-esp32 **3.3.11** for ESP32 Dev Module on the default partition, with no
-warnings from the sketch: **1,081,008 bytes — 82% of 1.31 MB** (the helper and installers it
-serves are about 50 KB of that, the pets' drawings included), globals at **15% of RAM**.
+warnings from the sketch: **1,133,476 bytes — 86% of 1.31 MB** (the helper and installers it
+serves, with all five pets' drawings, are about 75 KB of that), globals at **15% of RAM**.
 
 **The pet's life and its moves**, on a laptop, one rule at a time: hungry after a working
 morning, fed back up, refusing food when full; dozing at night, staying up when woken by hand
@@ -212,11 +225,13 @@ computer that had gone.
 
 **The helper, end to end,** against a stand-in board that speaks the same JSON and follows the
 same rules: two copies of the real helper as two "computers", "Kesh-MacBook" and "Office-PC",
-on Qt's offscreen screen. Adopted, the pet walked onto one screen, sat, wandered off its edge,
-and walked in on the other from the opposite side, only ever on one screen. A click registered as
-a stroke on the board. Called from the phone, it ran off one screen and onto the other. Put to bed,
-it lay down; woken, it got up. When its computer went quiet, it left, and the board brought it
-to the other one. Set to 200 px from the phone, it grew on screen. **12 of 12 checks.** The test also caught two real bugs before they shipped:
+on Qt's offscreen screen. Adopted (a fox), it walked in to its spot and then stayed perfectly
+still; after a while it travelled, walking off one edge and in on the other computer, only ever on
+one screen. A click registered as a stroke. Dragged up and to the left and dropped, it stayed
+exactly there and saved that as its spot; called away from the phone it left, and called back it
+walked in to that same spot and settled. Put to bed, it slept on its spot; woken, it stayed put.
+Set to 200 px from the phone, it grew without leaving its spot. **12 of 12 checks, on two runs
+in a row.** Writing the test caught two real bugs before they shipped:
 a method named `event` that quietly replaced Qt's own, and the macOS-only window calls running on
 a non-macOS backend. The helper also ran natively on macOS against the stand-in for nine
 seconds: it checked in, held the pet, and printed nothing.
@@ -228,15 +243,16 @@ that starts at login and restarts on a crash, and started it; running it a secon
 fine; the uninstaller removed everything. **10 of 10.**
 
 **The phone page**, in a browser against the stand-in board with two computers checking in:
-adopting a dog through its own buttons, feeding it, moving the size slider, and calling it to
+adopting a panda through its own buttons, feeding it, moving the size slider, and calling it to
 the other computer all reached the board.
 
-**The drawing**, rendered both ways (the browser's canvas and the helper's QPainter) for all six
-poses, both ways round: the same picture.
+**The drawing**, rendered both ways (the browser's canvas and the helper's QPainter) for all
+fifteen poses — five pets walking, sitting and sleeping — both ways round: the same picture.
 
-**Not yet confirmed:** any of it on a real board; the Windows installer and helper (written for
-PowerShell 5.1 and `winget`, not run); Linux; the first-run network prompts on each OS; and how
-it feels to have a pet wander between real screens for a day.
+**On hardware:** flashed and running; a Mac and a second computer have checked in with it and the
+pet has been stroked on screen. **Not yet confirmed:** this version of the helper on a real
+screen; the Windows installer and helper (written for PowerShell 5.1 and `winget`, not run);
+Linux; and a full day of a pet moving between real screens.
 
 ## Sources
 

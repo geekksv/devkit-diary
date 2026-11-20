@@ -91,7 +91,7 @@
       "title": "A pet that lives on the WiFi",
       "chapter": "chapters/09-a-pet-that-lives-on-the-wifi",
       "sketch": "chapters/09-a-pet-that-lives-on-the-wifi/src/pet",
-      "description": "A cat or a dog that lives on the board and walks across your computer screens, over any app, hopping from one computer to the next. Look after it from a phone.",
+      "description": "A cat, dog, bunny, fox or panda that lives on the board and sits on your computer screen, over any app, wherever you put it, now and then walking off to another computer. Look after it from a phone.",
       "wifi": "devkit-pet",
       "wifi_setup": true,
       "host": "pet",

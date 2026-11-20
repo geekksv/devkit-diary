@@ -59,6 +59,7 @@ static void load() {
   PetLife &p = world.pet;
   p.adopted = prefs.getBool("adopted", false);
   p.kind = prefs.getUChar("kind", PET_CAT);
+  if (p.kind >= PET_KINDS) p.kind = PET_CAT;
   prefs.getString("name", p.name, sizeof p.name);
   p.hunger = prefs.getFloat("hunger", 80);
   p.happy = prefs.getFloat("happy", 80);
@@ -181,7 +182,7 @@ static void handleAdopt() {
   char name[PET_NAME + 1];
   cleanText(web.arg("n"), name, sizeof name);
   if (!name[0]) return fail("name");
-  petAdopt(world, web.arg("k").toInt() == 1 ? PET_DOG : PET_CAT, name);
+  petAdopt(world, (uint8_t)constrain(web.arg("k").toInt(), 0, PET_KINDS - 1), name);
   world.at = -1;
   petSweep(world, millis(), sideRand());      // straight onto a computer, if one is online
   save();
