@@ -78,11 +78,30 @@ a phone claims is trusted — only what the referee computes.
 
 ## The turn clock
 
-Each turn has **25 seconds**, kept by the board. Run it out and the board plays for you: it
-rolls, and if a move is needed it makes a sensible one — prefer finishing a token, then a
-capture, then the furthest-along token. It's the same idea as the clocks in the other games,
-and here it earns its keep, because the classic way a Ludo game dies is one person taking
-forever while everyone drifts off.
+Each turn has **25 seconds**, kept by the board, and rolling gives you a fresh 25 to choose.
+Run it out and the board plays for you: it rolls if you hadn't, then makes a sensible move —
+prefer finishing a token, then a capture, then the furthest-along token. It's the same idea as
+the clocks in the other games, and here it earns its keep, because the classic way a Ludo game
+dies is one person taking forever while everyone drifts off.
+
+On the page the clock is a bar along the bottom of the active player's panel, with the seconds
+beside their score. It's white, turns amber under ten seconds and red under five — deliberately
+never a player's colour, so it can't blur into the panel it sits on.
+
+## The obvious move plays itself
+
+Most rolls in Ludo don't leave a real decision: every token in base and you roll a six, or one
+token out and the rest still waiting for a six, or two tokens stacked on one square. The board
+counts the **genuinely different** moves a roll allows — tokens standing together are
+interchangeable, so moving any of them is the same move — and when there is only one, it plays it
+itself about a second after the roll, once the die has landed and you've seen the number. When
+there is a real choice, it's yours.
+
+On a laptop, the counting was checked case by case (all in base on a six, one token out, a six
+with one out — a real choice — a stacked pair, two apart, the exact last roll home) and then
+across twenty thousand more full games with every one-choice turn auto-played: all finished,
+every move legal. About a third of all rolls turn out to be one-choice, so that's a third less
+tapping.
 
 ## The page
 
@@ -93,6 +112,9 @@ forever while everyone drifts off.
   moment before landing on the number the board rolled. The number stays up while you choose a
   token, so you always see what you got. A roll with no legal move lingers briefly, so nobody
   misses it.
+- **A dot where each token would land.** Tap the token or the dot.
+- **Captures are announced** — "Ria sent your token home" — and your phone buzzes briefly and the
+  tab title changes when your turn comes round.
 - **Tokens hop square by square** along the track, around corners, instead of sliding across the
   board. Tokens you can move get a ring; two on one square sit side by side; finished tokens line up
   in their colour's triangle in the centre.
@@ -125,7 +147,7 @@ forever while everyone drifts off.
 | `/watch` | POST | `c` | a read-only viewer token |
 | `/state` | GET | `c`, `t` | the whole game, from this seat's (or a viewer's) point of view, with the last roll |
 | `/start` | POST | `c`, `t` | the host, with two or more seated |
-| `/roll` | POST | `c`, `t` | roll the die; the page then shows the number and you tap a token |
+| `/roll` | POST | `c`, `t` | roll the die; with one real choice the board plays it a second later, otherwise you tap a token |
 | `/move` | POST | `c`, `t`, `k` | move token `k` |
 | `/again` | POST | `c`, `t` | after a game, start the next |
 | `/emoji` | POST | `c`, `t`, `e` | fling reaction `e` |
@@ -165,7 +187,7 @@ Then open the page on two to four phones, create a room, and start. Put it on a 
 ## Verified, and not
 
 Compiled against arduino-esp32 **3.3.11** for ESP32 Dev Module on the default partition, with no
-warnings from the sketch: **1,015,468 bytes — 77% of 1.31 MB**, globals at **15% of RAM**.
+warnings from the sketch: **1,017,640 bytes — 77% of 1.31 MB**, globals at **15% of RAM**.
 
 **The rule engine**, on a laptop, is where the real checking is. First the rules one at a time:
 a six needed to leave base, a capture sending an opponent home, a safe star and a two-token

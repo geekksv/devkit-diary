@@ -55,8 +55,10 @@ button.ghost{background:transparent;border-color:var(--line);color:var(--ink)}
 .p.turn{border-color:var(--c);box-shadow:inset 0 0 0 1px var(--c)}
 .p.win{border-color:#f2b705;box-shadow:inset 0 0 0 1px #f2b705}
 .p.empty .av,.p.out .av{background:var(--line)}.p.empty,.p.out{opacity:.5}
-.p .bar{position:absolute;left:0;bottom:0;height:3px;width:0;background:var(--c);transition:width .1s linear}
-.p .bar.low{background:#ef4444}
+.p .bar{position:absolute;left:0;bottom:0;height:4px;width:0;background:#e2e8f0;transition:width .1s linear}
+.p .bar.mid{background:#f59e0b}.p .bar.low{background:#ef4444}
+.p .sec{font-weight:700;color:#e2e8f0;font-variant-numeric:tabular-nums}
+.p .sec.mid{color:#f59e0b}.p .sec.low{color:#ef4444}
 .p .em{position:absolute;top:-2px;font-size:18px;animation:pop .3s ease}
 .p .em{right:52px}.p.r .em{right:auto;left:52px}
 .die{width:40px;height:40px;flex:none;position:relative;border-radius:10px;background:#fff;visibility:hidden;
@@ -73,6 +75,7 @@ button.ghost{background:transparent;border-color:var(--line);color:var(--ink)}
 #board{display:block;width:100%;height:auto;border-radius:14px;background:#fff;touch-action:manipulation;
   box-shadow:0 12px 32px -12px rgba(0,0,0,.7)}
 #board .tk{cursor:pointer;transition:transform .13s ease-out}
+#board .mark{cursor:pointer}
 #board.noanim .tk{transition:none}
 #board .tk .halo{opacity:0}
 #board .tk.mv .halo{opacity:1;animation:halo 1s ease-in-out infinite}
@@ -87,6 +90,9 @@ button.ghost{background:transparent;border-color:var(--line);color:var(--ink)}
 .emobar{display:flex;gap:4px;flex-wrap:wrap;justify-content:center;margin:12px 0 0}
 .emobar button{width:auto;background:transparent;border-color:var(--line);border-radius:999px;padding:5px 9px;font-size:17px;line-height:1.2}
 .rule{text-align:center;color:var(--faint);font-size:12px;margin:14px auto 0;max-width:420px}
+@media (max-width:420px){.p{gap:7px;padding:6px 7px}.p .av{width:24px;height:24px;font-size:11px}
+  .die{width:34px;height:34px;border-radius:8px}.p .nm{font-size:13px}.p .st{font-size:11.5px}
+  .p .em{right:44px}.p.r .em{left:44px}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style></head>
 <body class="lobby"><div class="wrap">
@@ -140,7 +146,7 @@ const DK=['#a8281f','#137240','#b58700','#1a54b8'];
 const TINT=['#fbd9d6','#d2eedd','#fcefbe','#d3e3fd'];
 const EMO=['😂','🔥','😮','😎','😭','👏','🎲','💀'];
 let code='',token='',mode=0,me=-1,timer=null,last=null,busy=false,lastEmojiAt=0;
-let lastRid=-1,primed=false,rollHoldSeat=-1,rollHoldUntil=0,lastFace=[0,0,0,0],prevProg=null,note='',noteUntil=0;
+let lastRid=-1,primed=false,rollHoldSeat=-1,rollHoldUntil=0,lastFace=[0,0,0,0],prevProg=null,note='',noteUntil=0,wasMyTurn=false,marks=null;
 const cap=s=>s.charAt(0).toUpperCase()+s.slice(1);
 const mk=(t,c)=>{const e=document.createElement(t);if(c)e.className=c;return e};
 
@@ -193,6 +199,7 @@ function buildBoard(){
   // the centre: one triangle per colour, meeting in the middle of the 3x3 square
   const tri=['7.5,7.5 6,6 6,9','7.5,7.5 6,6 9,6','7.5,7.5 9,6 9,9','7.5,7.5 6,9 9,9'];
   tri.forEach((pts,s)=>svg.appendChild(el('polygon',{points:pts,fill:COL[s],stroke:'#ffffff','stroke-width':0.04})));
+  marks=el('g',{});svg.appendChild(marks);
   tokenEls=[];
   for(let s=0;s<4;s++){tokenEls[s]=[];for(let t=0;t<4;t++){
     const g=el('g',{class:'tk'});
@@ -216,7 +223,7 @@ const OFF={2:[[-0.2,0],[0.2,0]],3:[[-0.2,-0.18],[0.2,-0.18],[0,0.2]],4:[[-0.2,-0
 function place(d){
   const svg=$('board'),first=!prevProg;
   if(first)svg.classList.add('noanim');
-  const groups={},items=[];
+  const groups={},items=[];marks.innerHTML='';
   for(let s=0;s<4;s++)for(let t=0;t<4;t++){
     const te=tokenEls[s][t];
     if(!d.here[s]||t>=d.mode){te.g.style.display='none';continue}   // empty seats show no tokens
@@ -247,6 +254,12 @@ function place(d){
     const mv=me===s&&d.phase===1&&d.turn===me&&d.gphase===2&&(d.movable||[]).includes(t);
     te.g.setAttribute('class',mv?'tk mv':'tk');
     if(mv)movable.push(te.g);
+    if(mv){                                        // where this token would land
+      const to=prog===0?1:prog+d.die;
+      const[mx,my]=to===57?finishSpot(s,0,1):cellCenter(s,to);
+      const m=el('circle',{class:'mark',cx:mx,cy:my,r:0.2,fill:'#ffffff',stroke:COL[s],'stroke-width':0.09});
+      m.addEventListener('click',()=>tapToken(s,t));marks.appendChild(m);
+    }
   }
   movable.forEach(g=>svg.appendChild(g));          // tokens you can move sit on top
   prevProg=d.prog.map(a=>a.slice());
@@ -261,9 +274,10 @@ function setDie(e,v){e.innerHTML='';for(const[x,y]of(PIP[v]||[])){const i=mk('i'
 
 const panels=[0,1,2,3].map(s=>{
   const root=$('p'+s),av=mk('div','av'),tx=mk('div','tx'),nm=mk('div','nm'),st=mk('div','st'),die=mk('div','die'),bar=mk('div','bar');
+  const stt=mk('span'),sec=mk('span','sec');st.append(stt,sec);
   tx.append(nm,st);root.append(av,tx,die,bar);root.style.setProperty('--c',COL[s]);
   root.onclick=()=>{if(last&&last.phase===1&&last.turn===me&&last.gphase===1&&s===me)roll()};
-  return{root,av,nm,st,die,bar,em:null};
+  return{root,av,nm,st:stt,sec,die,bar,em:null};
 });
 function renderPanels(d){
   for(let s=0;s<4;s++){
@@ -272,13 +286,12 @@ function renderPanels(d){
     P.root.className='p'+(s===1||s===2?' r':'')+(d.phase===1&&d.turn===s&&here?' turn':'')
       +(d.phase===2&&d.winner===s?' win':'')+(!here?(d.phase>0?' out':' empty'):'');
     P.av.textContent=here?(d.names[s][0]||'?').toUpperCase():'';
-    P.nm.textContent=here?d.names[s]:'Open seat';
+    P.nm.textContent=here?(s===me?'You':d.names[s]):'Open seat';
     let st;
     if(!here)st=d.phase>0?'Not playing':'Waiting for a player';
     else if(d.phase===2&&d.winner===s)st='Winner';
-    else if(d.phase>0)st=home+' of '+d.mode+' home';
+    else if(d.phase>0)st=home+'/'+d.mode+' home';
     else st=s===d.host?'Host':'Ready';
-    if(here&&s===me)st='You · '+st;
     if(here&&d.phase===0&&d.wins[s])st+=' · '+d.wins[s]+(d.wins[s]>1?' wins':' win');
     P.st.textContent=st;
     const want=d.emoji&&d.emoji.s===s?EMO[d.emoji.e]:'';
@@ -321,6 +334,11 @@ function draw(d){
   $('watchpill').style.display=me<0?'inline':'none';
   const name=s=>s===me?'you':(d.names[s]||'a player');
   renderPanels(d);
+  if(prevProg&&d.phase===1&&d.last&&d.last.caps>0&&d.last.s>=0)
+    for(let o=0;o<4;o++)for(let t=0;t<d.mode;t++)
+      if(prevProg[o][t]>=1&&prevProg[o][t]<=51&&d.prog[o][t]===0){
+        const whose=o===me?'your':(d.names[o]||'a')+"'s";
+        note=cap(name(d.last.s))+' sent '+whose+' token home';noteUntil=Date.now()+2600}
   place(d);
   if(d.emoji&&d.emoji.at!==lastEmojiAt){lastEmojiAt=d.emoji.at;bubble(d.emoji.s,d.emoji.e)}
 
@@ -346,11 +364,15 @@ function draw(d){
   }else if(d.phase===2){
     big=d.winner===me?'You won!':cap(name(d.winner))+' won';small=me>=0?'Play again for another round':'';
   }else if(canRoll){big='Your turn';small='Tap your dice to roll'}
-  else if(mine){big='You rolled a '+d.die;small=(d.movable||[]).length>1?'Tap a highlighted token to move it':'Tap the highlighted token to move it'}
-  else{big=cap(name(d.turn))+"'s turn";small=d.gphase===1?'Rolling…':'Choosing a move…'}
+  else if(mine){big='You rolled a '+d.die;
+    small=d.pend?'Only one move — playing it for you':(d.movable||[]).length>1?'Tap a token, or the dot where it lands':'Tap the token to move it'}
+  else{big=cap(name(d.turn))+"'s turn";small=d.gphase===1?'Rolling…':d.pend?'Moving…':'Choosing a move…'}
   if(d.phase===1&&Date.now()<noteUntil)small=note;
   if(d.phase===1&&d.auto)small='Time ran out — the board played the turn';
   $('pbig').textContent=big;$('psmall').textContent=small;
+  if(canRoll&&!wasMyTurn&&navigator.vibrate)try{navigator.vibrate(60)}catch(e){}
+  wasMyTurn=canRoll;
+  document.title=canRoll?'● Your turn · Ludo':'Ludo';
 
   $('startb').style.display=d.phase===0&&me===d.host&&d.here.filter(Boolean).length>=2?'block':'none';
   $('again').style.display=d.phase===2&&me>=0?'block':'none';
@@ -361,8 +383,11 @@ function draw(d){
 let deadline=0,limit=25000;
 setInterval(()=>{
   const left=deadline?Math.max(0,deadline-Date.now()):0;
-  panels.forEach((P,s)=>{const on=deadline&&last&&last.turn===s;
-    P.bar.style.width=on?(left/limit*100)+'%':'0';P.bar.classList.toggle('low',on&&left<6000)});
+  panels.forEach((P,s)=>{const on=!!(deadline&&last&&last.phase===1&&last.turn===s);
+    const low=on&&left<5000,mid=on&&!low&&left<10000;
+    P.bar.style.width=on?(left/limit*100)+'%':'0';
+    P.sec.textContent=on?' · '+Math.ceil(left/1000)+'s':'';
+    for(const e of[P.bar,P.sec]){e.classList.toggle('low',low);e.classList.toggle('mid',mid)}});
 },100);
 
 EMO.forEach((e,i)=>{const b=mk('button');b.textContent=e;
@@ -374,7 +399,7 @@ function forget(){try{localStorage.removeItem('ludo')}catch(e){}}
 function myName(){const n=$('nm').value.trim();try{localStorage.setItem('ludo_n',n)}catch(e){};return n}
 const ERRS={name:'Pick a name first.',full:'All rooms are in use.',nocode:'No room with that code.',busy:'That room is full.',started:'That game has started.',alone:'Need at least two players.'};
 function show(v){document.body.className=v}
-function reset(){last=null;lastRid=-1;primed=false;rollHoldSeat=-1;lastFace=[0,0,0,0];prevProg=null;noteUntil=0;deadline=0;
+function reset(){wasMyTurn=false;document.title='Ludo';last=null;lastRid=-1;primed=false;rollHoldSeat=-1;lastFace=[0,0,0,0];prevProg=null;noteUntil=0;deadline=0;
   panels.forEach(P=>{clearInterval(P.die._iv);P.die._iv=0;P.die.className='die'})}
 function toLobby(m){clearTimeout(timer);code='';token='';me=-1;reset();forget();show('lobby');$('jerr').textContent=m||'';history.replaceState(null,'','/');lobby()}
 function enter(d){code=d.code;token=d.token;me=d.seat;store();reset();buildBoard();history.replaceState(null,'','/?c='+code);show('game');poll()}

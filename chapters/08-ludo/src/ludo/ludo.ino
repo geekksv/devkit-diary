@@ -25,6 +25,7 @@ const int MAX_ROOMS = 4;
 const int NAME_LEN = 12;
 const uint32_t SEAT_MS = 60000;        // a seat is released this long after its phone goes quiet
 const uint32_t TURN_MS = 25000;        // time for a turn; run it out and the board plays for you
+const uint32_t AUTO_MS = 1100;         // pause before the board plays a move that was the only choice
 const uint32_t EMOJI_MS = 4000;        // how long a flung emoji lingers in the state
 
 const int EMOJI_COUNT = 8;   // the page holds the glyphs; the board only passes the index
@@ -45,6 +46,8 @@ struct Room {
   uint8_t rollVal;                     // the last die rolled, so the page can show it
   int8_t rollSeat;                     // who rolled it (-1 before any roll this game)
   uint32_t rollId;                     // bumps on every roll, so the page animates even on a repeat
+  uint32_t autoAt;                     // when the board will play the only move on offer (0: none)
+  int8_t autoTok;                      // which token that is
   uint16_t wins[LUDO_SEATS];
   // the most recent emoji: who threw it, which, and when
   int8_t emojiSeat;
@@ -122,29 +125,75 @@ static void vacate(Room &r, int s) {
   if (r.phase != 1) return;
   r.g.active[s] = false;
   if (seated(r) < 2) { r.phase = 2; r.g.phase = LUDO_OVER; r.g.winner = hostOf(r); r.wins[r.g.winner]++; return; }
-  if (r.g.turn == s) { ludoPass(r.g); r.turnAt = millis(); }   // ludoPass skips inactive seats
+  if (r.g.turn == s) { ludoPass(r.g); r.turnAt = millis(); r.autoAt = 0; }   // ludoPass skips inactive seats
 }
 
 // ── the clock: the board plays for a seat that has run out of time ──────────
 // A turn that is not finished within TURN_MS is played by the board: it rolls, and if a move
 // is called for it makes a sensible one. This is what keeps a game from stalling on one person.
 
-static void rollFor(Room &r) {
+// Roll the die for whoever's turn it is. Leaves phase MOVE if there is a move, else the turn passes.
+static void rollDie(Room &r) {
   const int die = 1 + esp_random() % 6;
   r.rollVal = die; r.rollSeat = r.g.turn; r.rollId++;
-  if (ludoRoll(r.g, die)) {
-    const int tk = ludoAutoPick(r.g, r.g.turn, r.g.die);
-    if (tk >= 0) ludoMove(r.g, r.g.turn, tk);
+  r.autoAt = 0;
+  ludoRoll(r.g, die);
+  r.turnAt = millis(); r.ver++;
+}
+
+// Play a move and settle what follows: the win, the clock, the version.
+static bool playMove(Room &r, int seat, int tk) {
+  r.autoAt = 0;
+  const LudoMove m = ludoMove(r.g, seat, tk);
+  if (!m.ok) return false;
+  if (m.win) { r.phase = 2; r.wins[seat]++; }
+  r.turnAt = millis(); r.ver++;
+  return true;
+}
+
+// How many genuinely different moves a roll allows. Tokens standing together — all waiting in
+// base, or stacked on one square — are interchangeable, so moving any of them is the same move.
+static int moveChoices(const LudoState &g, int seat, int *pick) {
+  int mv[LUDO_TOKENS], where[LUDO_TOKENS], kinds = 0;
+  const int n = ludoLegal(g, seat, g.die, mv);
+  for (int i = 0; i < n; i++) {
+    const int p = g.prog[seat][mv[i]];
+    bool seen = false;
+    for (int j = 0; j < kinds; j++) if (where[j] == p) seen = true;
+    if (!seen) where[kinds++] = p;
   }
-  r.turnAt = millis();
-  r.ver++;
+  if (n) *pick = mv[0];
+  return kinds;
+}
+
+// After a roll with only one real choice, the board plays it itself after a beat, so the number
+// is seen first and nobody has to tap the obvious.
+static void afterRoll(Room &r) {
+  int tk;
+  if (r.g.phase == LUDO_MOVE && moveChoices(r.g, r.g.turn, &tk) == 1) {
+    r.autoTok = tk;
+    r.autoAt = millis() + AUTO_MS;
+    if (!r.autoAt) r.autoAt = 1;                  // 0 means "nothing pending"
+  }
 }
 
 static void checkClock(Room &r) {
   if (r.phase != 1) return;
+  if (r.autoAt && (int32_t)(millis() - r.autoAt) >= 0) {   // the obvious move, due now
+    if (r.g.phase == LUDO_MOVE) playMove(r, r.g.turn, r.autoTok);
+    r.autoAt = 0;
+    return;
+  }
   if (millis() - r.turnAt < TURN_MS) return;
+  // time is up: roll if they hadn't, then make a sensible move for them
+  const int s = r.g.turn;
   r.autoed = true;
-  rollFor(r);
+  if (r.g.phase == LUDO_ROLL) rollDie(r);
+  if (r.g.phase == LUDO_MOVE && r.g.turn == s) {
+    const int tk = ludoAutoPick(r.g, s, r.g.die);
+    if (tk >= 0 && playMove(r, s, tk)) return;
+  }
+  r.turnAt = millis(); r.ver++;
 }
 
 static void sweep() {
@@ -189,6 +238,7 @@ static void sendState(const Room &r, int me) {       // me: seat 0..3, or -1 for
   o += ",\"gphase\":" + String(r.g.phase);     // 1 roll, 2 move, 3 over
   o += ",\"winner\":" + String(r.g.winner);
   o += ",\"auto\":" + String(r.autoed ? 1 : 0);
+  o += ",\"pend\":" + String(r.autoAt && r.g.phase == LUDO_MOVE ? 1 : 0);   // the board is about to play the only move
   // the legal tokens for the viewer, only when it is their turn to move
   o += ",\"movable\":[";
   if (r.phase == 1 && me == r.g.turn && r.g.phase == LUDO_MOVE) {
@@ -300,7 +350,7 @@ static void handleStart() {
   bool act[LUDO_SEATS]; activeMask(*r, act);
   ludoBegin(r->g, r->mode, act, s);      // the host opens
   r->phase = 1; r->first = s; r->turnAt = millis(); r->autoed = false;
-  r->rollVal = 0; r->rollSeat = -1; r->rollId++; r->ver++;
+  r->rollVal = 0; r->rollSeat = -1; r->rollId++; r->autoAt = 0; r->ver++;
   sendState(*r, s);
 }
 
@@ -309,10 +359,8 @@ static void handleRoll() {
   if (!r) return;
   if (r->phase != 1 || s != r->g.turn || r->g.phase != LUDO_ROLL) return fail("notturn");
   r->autoed = false;
-  const int die = 1 + esp_random() % 6;
-  r->rollVal = die; r->rollSeat = s; r->rollId++;
-  ludoRoll(r->g, die);                      // -> phase MOVE if a move exists, else the turn passes
-  r->turnAt = millis(); r->ver++;
+  rollDie(*r);
+  afterRoll(*r);
   sendState(*r, s);
 }
 
@@ -321,10 +369,8 @@ static void handleMove() {
   if (!r) return;
   if (r->phase != 1 || s != r->g.turn || r->g.phase != LUDO_MOVE) return fail("notturn");
   const int k = web.arg("k").toInt();
-  LudoMove m = ludoMove(r->g, s, k);
-  if (!m.ok) return fail("illegal");
-  r->autoed = false; r->turnAt = millis(); r->ver++;
-  if (m.win) { r->phase = 2; r->wins[s]++; }
+  if (!playMove(*r, s, k)) return fail("illegal");
+  r->autoed = false;
   sendState(*r, s);
 }
 
@@ -337,7 +383,7 @@ static void handleAgain() {
   const int opener = ludoNextSeat(r->g, r->first >= 0 && r->tok[r->first] ? r->first : hostOf(*r));
   ludoBegin(r->g, r->mode, act, opener);
   r->phase = 1; r->first = opener; r->turnAt = millis(); r->autoed = false; r->emojiSeat = -1;
-  r->rollVal = 0; r->rollSeat = -1; r->rollId++; r->ver++;
+  r->rollVal = 0; r->rollSeat = -1; r->rollId++; r->autoAt = 0; r->ver++;
   sendState(*r, s);
 }
 
