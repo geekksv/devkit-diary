@@ -44,10 +44,12 @@
     Write-Host '  making a private Python environment'
     & $py -m venv (Join-Path $Dir 'venv')
   }
-  Write-Host '  installing the window toolkit (one-off download, a minute or two)'
+  Write-Host "  installing the window toolkit and the pet's drawing engine (one-off download, a few minutes)"
   & $venvPy -m pip install -q --disable-pip-version-check --upgrade pip 2>$null | Out-Null
   & $venvPy -m pip install -q --disable-pip-version-check 'PyQt6>=6.4'
   if ($LASTEXITCODE -ne 0) { throw 'Installing PyQt6 failed.' }
+  & $venvPy -m pip install -q --disable-pip-version-check 'PyQt6-WebEngine>=6.4'
+  if ($LASTEXITCODE -ne 0) { Write-Host "  (couldn't install the drawing engine - the pet will show as an emoji instead)" }
 
   Write-Host '  fetching the helper from the board'
   $got = $null

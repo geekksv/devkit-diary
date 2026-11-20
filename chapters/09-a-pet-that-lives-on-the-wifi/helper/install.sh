@@ -4,7 +4,8 @@
 #   curl -fsSL http://pet.local/i | sh
 #
 # Run once. It makes a private Python environment in ~/.devkit-pet, installs the window toolkit
-# (PyQt6) there, fetches the helper from the board, and sets it to start by itself at login.
+# (PyQt6, and PyQt6-WebEngine to draw the pet) there, fetches the helper from the board, and sets it
+# to start by itself at login.
 # Nothing is installed system-wide. To remove it all:  curl -fsSL http://pet.local/u | sh
 #
 # The board fills in its own addresses below when it serves this file.
@@ -34,9 +35,11 @@ main() {
     echo "  making a private Python environment"
     python3 -m venv "$DIR/venv" || { echo "Couldn't make it — on Debian/Ubuntu: sudo apt install python3-venv"; exit 1; }
   fi
-  echo "  installing the window toolkit (one-off download, a minute or two)"
+  echo "  installing the window toolkit and the pet's drawing engine (one-off download, a few minutes)"
   "$DIR/venv/bin/python" -m pip install -q --disable-pip-version-check --upgrade pip >/dev/null 2>&1 || true
   "$DIR/venv/bin/python" -m pip install -q --disable-pip-version-check "PyQt6>=6.4"
+  "$DIR/venv/bin/python" -m pip install -q --disable-pip-version-check "PyQt6-WebEngine>=6.4" \
+    || echo "  (couldn't install the drawing engine — the pet will show as an emoji instead)"
 
   echo "  fetching the helper from the board"
   GOT=""
