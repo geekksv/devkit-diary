@@ -1095,6 +1095,9 @@ DESK
   if [ "$(uname)" = "Darwin" ]; then
     echo "If macOS asks to let Python find devices on your local network, click Allow."
   fi
+  echo
+  echo "Nothing else to do. (Only if you ever want to take the pet off this computer, run:"
+  echo "  curl -fsSL http://$GOT/u | sh )"
 }
 
 main "$@"
@@ -1194,6 +1197,9 @@ static const char INSTALL_PS1[] PROGMEM = R"~pet~(# devkit-diary, chapter 9 — 
 
   Write-Host 'Done. The pet can visit this computer now - and the helper starts by itself from now on.' -ForegroundColor Green
   Write-Host "If Windows asks whether Python may use your network, allow it on private networks."
+  Write-Host ""
+  Write-Host "Nothing else to do. (Only if you ever want to take the pet off this computer, run:" -ForegroundColor DarkGray
+  Write-Host "  irm http://$got/u.ps1 | iex )" -ForegroundColor DarkGray
 }
 )~pet~";
 

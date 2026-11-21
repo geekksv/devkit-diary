@@ -62,6 +62,11 @@ helper). If Windows has no Python, the installer installs it for that user with 
 Mac that has never had the developer tools, macOS offers to install them, and you run the
 command again once they're in.
 
+To take the pet off a computer later, the installer's last line tells you how; it's the same
+shape of command: `curl -fsSL http://pet.local/u | sh`, or `irm http://pet.local/u.ps1 | iex`
+on Windows. It removes the helper, its login item and its private environment. The pet itself
+lives on the board and isn't touched.
+
 To take it off a computer: `curl -fsSL http://pet.local/u | sh` (or
 `irm http://pet.local/u.ps1 | iex`). The pet itself stays on the board.
 

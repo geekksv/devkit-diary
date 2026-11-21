@@ -90,6 +90,9 @@ DESK
   if [ "$(uname)" = "Darwin" ]; then
     echo "If macOS asks to let Python find devices on your local network, click Allow."
   fi
+  echo
+  echo "Nothing else to do. (Only if you ever want to take the pet off this computer, run:"
+  echo "  curl -fsSL http://$GOT/u | sh )"
 }
 
 main "$@"

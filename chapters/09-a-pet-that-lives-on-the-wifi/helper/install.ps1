@@ -73,4 +73,7 @@
 
   Write-Host 'Done. The pet can visit this computer now - and the helper starts by itself from now on.' -ForegroundColor Green
   Write-Host "If Windows asks whether Python may use your network, allow it on private networks."
+  Write-Host ""
+  Write-Host "Nothing else to do. (Only if you ever want to take the pet off this computer, run:" -ForegroundColor DarkGray
+  Write-Host "  irm http://$got/u.ps1 | iex )" -ForegroundColor DarkGray
 }
