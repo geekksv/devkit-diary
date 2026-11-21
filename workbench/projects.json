@@ -97,6 +97,18 @@
       "host": "pet",
       "partition": "default",
       "after": "Open http://pet.local on your phone to adopt it, then add each computer with the one-line command shown there"
+    },
+    {
+      "id": "10-scan",
+      "title": "Who's on my WiFi",
+      "chapter": "chapters/10-whos-on-my-wifi",
+      "sketch": "chapters/10-whos-on-my-wifi/src/scanner",
+      "description": "A network scanner on the board, like Angry IP Scanner: every device on your WiFi with its maker, name, speed and open ports, a live latency graph, new-device alerts, Wake-on-LAN, CSV export, and messages to your computers.",
+      "wifi": "devkit-scan",
+      "wifi_setup": true,
+      "host": "scan",
+      "partition": "min_spiffs",
+      "after": "Open http://scan.local on your phone; the first scan takes about 20 seconds"
     }
   ],
   "devices": [
