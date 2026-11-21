@@ -139,16 +139,6 @@ static uint32_t broadcastIp() { return myIp() | ~maskBits(); }
 
 // ── messages ─────────────────────────────────────────────────────────────────────────────────
 
-struct Helper { uint32_t ip; char name[40]; char os[12]; uint32_t lastMs; };
-struct Msg {
-  uint16_t id;
-  uint32_t ip;               // the computer it went to, or came from
-  uint8_t out;               // 1 = to the computer, 0 = a reply from it
-  uint8_t state;             // out: 0 waiting for the computer to pick it up, 1 delivered
-  uint32_t t;                // epoch
-  char who[24];              // out: "Phone" or "Scanner"; in: the computer's name
-  char text[200];
-};
 const int MAX_HELPERS = 16, MAX_MSGS = 30;
 Helper helpers[MAX_HELPERS];
 Msg msgs[MAX_MSGS];
