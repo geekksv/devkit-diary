@@ -109,6 +109,18 @@
       "host": "scan",
       "partition": "min_spiffs",
       "after": "Open http://scan.local on your phone; the first scan takes about 20 seconds"
+    },
+    {
+      "id": "11-tambola",
+      "title": "Tambola",
+      "chapter": "chapters/11-tambola",
+      "sketch": "chapters/11-tambola/src/tambola",
+      "description": "Tambola (Housie) for the whole room: the board makes proper tickets, calls the numbers in English or Hindi, and checks every claim. Up to 30 phones, plus a big caller screen for the TV.",
+      "wifi": "devkit-tambola",
+      "wifi_setup": true,
+      "host": "tambola",
+      "partition": "default",
+      "after": "Open http://tambola.local on your phone and start a game; open the caller screen on a TV or laptop"
     }
   ],
   "devices": [
