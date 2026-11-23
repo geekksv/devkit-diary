@@ -19,11 +19,11 @@ voice. The board keeps the room together.
    iPhone: *Show details* → *visit this website*.
 2. Type your name, pick **the language you speak**, and **Start a room**. You get a four-letter
    code. Everyone else joins with it, or taps the room in the list, each in their own language.
-3. **Tap 🎤 and speak**, or type. Everyone sees what you said in their language, with your words
-   underneath, and their phone reads it aloud (🔊 turns that off per phone).
+3. **Tap the mic and speak**, or type. Everyone sees what you said in their language, with your
+   words underneath, and their phone reads it aloud (the speaker button turns that off per phone).
 
 **Also in the room:**
-- **⚡ Quick phrases:** Yes, No, Thank you, Please speak slowly, Where is the bathroom?, and more.
+- **Quick phrases:** Yes, No, Thank you, Please speak slowly, Where is the bathroom?, and more.
   One tap, and everyone gets it in their language.
 - **Keep listening (captions):** the phone listens until you stop it. Everyone sees what is being
   said as it is said (the grey "speaking now" line), then each sentence in their own language.
@@ -36,6 +36,9 @@ voice. The board keeps the room together.
 **One phone, two people:** the screen splits in two, the top half upside down for the person
 across the table. Each half has its own language and its own mic, and each sees the other's words
 in their own language, read aloud.
+
+**The page** follows the phone's light or dark setting, with line icons drawn into the page itself
+(no emoji, nothing loaded from the internet).
 
 **Tools** (no room needed): **Dictate** (speak, get text to copy), **Read aloud** (paste text,
 pick a language and speed), and **Translate** (type in any language).
@@ -82,7 +85,7 @@ warning and cost the board much less memory. Both doors answer through the same 
 
 ## Endpoints
 
-All take the room code `c`. Those marked ✋ need your seat token `t`. Every answer is JSON.
+All take the room code `c`. Those marked *seat* also need your seat token `t`. Every answer is JSON.
 
 | Path | Body | |
 |---|---|---|
@@ -90,11 +93,11 @@ All take the room code `c`. Those marked ✋ need your seat token `t`. Every ans
 | `/create` | `n` name, `l` language | a new room; you host |
 | `/join` | `n`, `l` (`t` to come back) | a seat; coming back with a new `l` changes your language |
 | `/state` | `v` version, `tl` translation language | people, and messages changed since `v`, with the `tl` translation if the board has one. `more`: come straight back |
-| `/say` ✋ | `x` text, `l` its language, `k` 0 spoken / 1 typed / 2 phrase | |
+| `/say` *seat* | `x` text, `l` its language, `k` 0 spoken / 1 typed / 2 phrase | |
 | `/tr` | `id`, `tl`, `x` | a phone's translation of a message; the first for each language is kept |
-| `/live` ✋ | `x` words so far, `on` listening | the grey "speaking now" line |
-| `/me` ✋ | `n`, `l` | change name or language |
-| `/leave` ✋, `/clear` ✋ host | | |
+| `/live` *seat* | `x` words so far, `on` listening | the grey "speaking now" line |
+| `/me` *seat* | `n`, `l` | change name or language |
+| `/leave` *seat*, `/clear` *seat*, host only | | |
 
 ## Files
 
@@ -145,7 +148,7 @@ Then open http://localhost:8091. Browsers treat `localhost` as secure, so the mi
 ## Verified, and not
 
 Compiled against arduino-esp32 **3.3.11** for ESP32 Dev Module, on the default partition, with no
-warnings from the sketch: **1,144,304 bytes, 87% of 1.31 MB**, and globals at **22% of RAM**.
+warnings from the sketch: **1,156,640 bytes, 88% of 1.31 MB**, and globals at **22% of RAM**.
 
 **Step 1 on the board itself** (`tools/mictest`):
 - On a Mac in Chrome and an Android phone in Chrome, the board's own certificate made a secure
