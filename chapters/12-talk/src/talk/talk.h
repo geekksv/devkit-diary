@@ -55,6 +55,7 @@ struct Person {
   char name[NAME_LEN + 1];
   char lang[LANG_LEN + 1];   // what they speak and read, as a speech code: "hi-IN"
   uint32_t seen;
+  bool away;                 // as last shown to everyone; a change bumps the room's version
   bool listening;            // keeps the mic open (captions)
   std::string live;          // what they are saying right now, not final yet
   uint32_t liveAt;
@@ -219,6 +220,7 @@ inline int addPerson(Room &r, const char *name, const char *lang, uint32_t now) 
   if (!p.name[0]) snprintf(p.name, sizeof p.name, "Guest %d", at + 1);
   if (!cleanLang(lang, p.lang)) strcpy(p.lang, "en-IN");
   p.seen = now;
+  p.away = false;
   p.listening = false;
   p.live.clear();
   p.liveAt = 0;
@@ -249,8 +251,11 @@ inline void tick(uint32_t now) {
         if (r.p[i].used && now - r.p[i].seen < AWAY_MS) { r.host = i; r.ver++; break; }
       }
     }
-    for (auto &p : r.p)
-      if (p.used && !p.live.empty() && now - p.liveAt > LIVE_MS) { p.live.clear(); r.ver++; }
+    for (auto &p : r.p) {
+      if (!p.used) continue;
+      if (!p.live.empty() && now - p.liveAt > LIVE_MS) { p.live.clear(); r.ver++; }
+      if (!p.away && now - p.seen > AWAY_MS) { p.away = true; r.ver++; }   // so "same" replies stay true
+    }
   }
 }
 
@@ -337,6 +342,9 @@ struct Out {
 // only that translation of each message is sent. A long history comes over several replies:
 // "more" asks the phone to come straight back.
 inline void stateJson(Out &o, Room &r, int me, uint32_t since, const char *tl, uint32_t now) {
+  // Nothing changed since this phone last asked: a few bytes instead of the whole room. Most
+  // polls end here, which is what keeps a busy room light on the board.
+  if (since == r.ver) { o.add("{\"ok\":true,\"same\":true,\"v\":%lu}", (unsigned long)r.ver); return; }
   const bool reset = since < r.clearedVer || since > r.ver;
   if (reset) since = 0;
   o.add("{\"ok\":true,\"c\":\"%s\",\"me\":%d,\"host\":%d,\"now\":%lu,\"reset\":%s,\"people\":[", r.code, me, r.host,
@@ -347,7 +355,7 @@ inline void stateJson(Out &o, Room &r, int me, uint32_t since, const char *tl, u
     if (!p.used) continue;
     o.add("%s{\"i\":%d,\"n\":", first ? "" : ",", i);
     o.str(p.name);
-    o.add(",\"l\":\"%s\",\"away\":%s,\"on\":%s,\"live\":", p.lang, now - p.seen > AWAY_MS ? "true" : "false",
+    o.add(",\"l\":\"%s\",\"away\":%s,\"on\":%s,\"live\":", p.lang, p.away ? "true" : "false",
           p.listening ? "true" : "false");
     o.str(p.live.c_str());
     o.add("}");
@@ -428,7 +436,7 @@ template <class G> inline void route(const char *path, G arg, uint32_t now, Out 
   const uint32_t tok = (uint32_t)strtoul(arg("t"), nullptr, 16);
   int me = personOf(r, tok);
   if (me >= 0) {
-    if (now - r.p[me].seen > AWAY_MS) r.ver++;   // back from away: everyone sees it
+    if (r.p[me].away) { r.p[me].away = false; r.ver++; }   // back from away: everyone sees it
     r.p[me].seen = now;
   }
 

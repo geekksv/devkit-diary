@@ -10,6 +10,7 @@ static const char TALK_PAGE[] PROGMEM = R"HTML(<!doctype html>
 <meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0f1115" media="(prefers-color-scheme: dark)">
 <title>Talk</title>
+<link rel="icon" href="data:,">
 <style>
 :root{--bg:#f6f7f9;--surface:#fff;--surface2:#f0f2f5;--line:#e2e5ea;--text:#151922;--muted:#667085;--acc:#3557d4;--acc-ink:#fff;--acc-soft:#e9eefc;
  --danger:#c93b3b;--warn:#b7791f;--warn-soft:#fdf6e7;--mine:#3557d4;--mine-ink:#fff;--mine-sub:rgba(255,255,255,.78);
@@ -344,7 +345,18 @@ function listen(lang,continuous,h){
 function secureUrl(){return 'https://'+(location.hostname||'talk.local')+'/'+location.hash;}
 
 // ── talking to the board ─────────────────────────────────────────────────────
-async function api(path,data){const r=await fetch(path,{method:'POST',body:new URLSearchParams(data||{})});return r.json();}
+// Every request to the board goes through one queue, so a phone holds one connection to it, not
+// six. A secure connection costs the board ~37 KB, and it can only keep about three.
+let chain=Promise.resolve();
+function queued(fn){const p=chain.then(fn,fn);chain=p.catch(()=>{});return p;}
+async function boardFetch(url,opt){const c=new AbortController();const t=setTimeout(()=>c.abort(),10000);
+ try{const r=await fetch(url,Object.assign({signal:c.signal},opt||{}));return await r.json();}finally{clearTimeout(t)}}
+function api(path,data){return queued(()=>boardFetch(path,{method:'POST',body:new URLSearchParams(data||{})}));}
+function getJ(url){return queued(()=>boardFetch(url));}
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+// How soon to ask again: quickly while someone is talking, slowly in a quiet room, rarely when
+// the screen is off.
+function pace(active){return document.hidden?5000:active?800:2000;}
 
 // ── home ─────────────────────────────────────────────────────────────────────
 fillLangs($('lang'),store.get('lang','en-IN'));$('name').value=store.get('name','');
@@ -359,12 +371,12 @@ async function joinCode(c){const n=needName();if(!n)return;c=c.toUpperCase();con
  if(!j.ok){$('homeErr').textContent={noroom:'No room with that code.',roomfull:'That room is full.'}[j.err]||j.err;return;}enterRoom(j.c,j.t);}
 $('join').onclick=()=>{const c=$('code').value.trim();if(c.length===4)joinCode(c);else $('homeErr').textContent='The code has four letters.';};
 $('code').onkeydown=e=>{if(e.key==='Enter')$('join').click();};
-async function listRooms(){if($('home').hidden)return;try{const j=await (await fetch('/rooms')).json();
+async function listRooms(){if($('home').hidden||document.hidden)return;try{const j=await getJ('/rooms');
  $('openRooms').hidden=!j.rooms.length;
  $('roomList').innerHTML=j.rooms.map(r=>'<div class="item"><span class="badge">'+r.c+'</span><div class="grow"><div><b>'+esc(r.host)+'</b> <span class="muted small">&middot; '+r.n+' here</span></div>'+
   [...new Set(r.langs.map(l=>L(l)[0].split(' ')[0]))].map(n=>'<span class="tag">'+esc(n)+'</span>').join('')+'</div><button class="btn sec sm" data-c="'+r.c+'">Join</button></div>').join('');
  $('roomList').querySelectorAll('button').forEach(b=>b.onclick=()=>joinCode(b.dataset.c));}catch(e){}}
-setInterval(listRooms,4000);
+setInterval(listRooms,5000);
 
 // ── the room ─────────────────────────────────────────────────────────────────
 const R={code:'',tok:'',me:-1,host:-1,ver:0,msgs:new Map(),people:[],timer:0,polling:false,loaded:false,openAt:0,speakOn:true,
@@ -374,17 +386,21 @@ function enterRoom(c,t){Object.assign(R,{code:c,tok:t,me:-1,ver:0,warned:false,m
  const seat=store.get('seat',{});seat[c]=t;store.set('seat',seat);
  R.speakOn=store.get('speak',true);spkUi();
  location.hash='c='+c;show('room');$('rCode').textContent=c;$('msgs').innerHTML='';poll();}
-async function poll(){clearTimeout(R.timer);if(R.polling||!R.code)return;R.polling=true;let again=1000;
- try{const j=await (await fetch('/state?c='+R.code+'&t='+R.tok+'&v='+R.ver+'&tl='+enc(tlOf(myLang())))).json();
+async function poll(){clearTimeout(R.timer);if(!R.code)return;if(R.polling){R.soon=true;return;}R.polling=true;let again=1000;
+ try{const j=await getJ('/state?c='+R.code+'&t='+R.tok+'&v='+R.ver+'&tl='+enc(tlOf(myLang())));
   if(!j.ok){if(j.err==='noroom'){toast('That room has closed.');leaveRoom(true);}R.polling=false;return;}
+  const active=R.mode!=='off'||Date.now()-(R.changed||0)<15000||R.people.some(p=>p.on||p.live);
+  if(j.same){again=pace(active);throw 0;}
+  R.changed=Date.now();
   if(j.reset){R.msgs.clear();$('msgs').innerHTML='';}
   R.me=j.me;R.host=j.host;R.people=j.people;R.openAt=Date.now()-j.now*1000;
   if(R.me<0&&!R.warned){R.warned=true;toast('You are watching this room. Join from the start screen to talk.');}
   for(const m of j.msgs){const old=R.msgs.get(m.id);if(old&&old.t&&!m.t)m.t=old.t;R.msgs.set(m.id,m);if(!R.loaded)R.spoken.add(m.id);}
-  R.ver=j.v;if(j.more)again=0;else R.loaded=true;
+  R.ver=j.v;if(j.more)again=0;else{R.loaded=true;again=pace(true);}
   renderRoom();
- }catch(e){again=2500;}
- R.polling=false;if(R.code&&!$('room').hidden)R.timer=setTimeout(poll,again);}
+ }catch(e){if(e!==0)again=2500;}
+ R.polling=false;if(R.soon){R.soon=false;again=0;}   // something was sent meanwhile: show it now
+ if(R.code&&!$('room').hidden)R.timer=setTimeout(poll,again);}
 function needsTr(m,tl){return base(m.l)!==base(tl);}
 function renderRoom(){
  const tl=tlOf(myLang());
@@ -430,9 +446,12 @@ function spkUi(){$('spk').innerHTML=ic(R.speakOn?'vol':'mute');$('spk').title=R.
 $('spk').onclick=()=>{R.speakOn=!R.speakOn;store.set('speak',R.speakOn);spkUi();if(!R.speakOn&&window.speechSynthesis)speechSynthesis.cancel();
  toast(R.speakOn?'New messages will be read aloud':'Messages will not be read aloud');};
 // The mic: tap for one sentence; "keep listening" for captions.
-let liveT=0,liveText='';
-function sendLive(t,on){liveText=t;const now=Date.now();if(now-liveT<700&&t)return;liveT=now;
- api('/live',{c:R.code,t:R.tok,x:t,on:on?1:0}).catch(()=>{});}
+// The grey "speaking now" line: only the newest words are sent, at most every 700 ms, so a fast
+// talker never queues up a pile of updates.
+let livePending=null,liveBusy=false;
+function sendLive(t,on){livePending={t,on};if(!liveBusy)flushLive();}
+async function flushLive(){if(!livePending||!R.code)return;liveBusy=true;const x=livePending;livePending=null;
+ await api('/live',{c:R.code,t:R.tok,x:x.t,on:x.on?1:0}).catch(()=>{});await sleep(700);liveBusy=false;if(livePending)flushLive();}
 function micStart(mode){if(R.mic)return;R.mode=mode;
  R.mic=listen(myLang(),mode==='keep',{final:t=>{send(t,0);sendLive('',mode==='keep');},interim:t=>sendLive(t,true),
   end:fatal=>{R.mic=null;if(R.mode==='keep'&&!fatal){setTimeout(()=>{if(R.mode==='keep')micStart('keep');},250);return;}
@@ -475,11 +494,11 @@ $('goPass').onclick=async()=>{const n=($('name').value.trim()||'Me');
  Object.assign(P,{code:j.c,a:j.t,b:k.t,ver:0,msgs:new Map(),loaded:false,spoken:new Set()});show('pass');passPoll();};
 $('langA').onchange=()=>{store.set('passA',$('langA').value);api('/me',{c:P.code,t:P.a,l:$('langA').value});passRender();};
 $('langB').onchange=()=>{store.set('passB',$('langB').value);api('/me',{c:P.code,t:P.b,l:$('langB').value});passRender();};
-async function passPoll(){clearTimeout(P.timer);if(!P.code)return;let again=1000;
- try{const j=await (await fetch('/state?c='+P.code+'&t='+P.a+'&v='+P.ver+'&tl='+enc(tlOf($('langA').value)))).json();
-  if(j.ok){if(j.reset)P.msgs.clear();P.openAt=Date.now()-j.now*1000;const tl=tlOf($('langA').value);
+async function passPoll(){clearTimeout(P.timer);if(!P.code)return;let again=pace(!!P.mic);
+ try{const j=await getJ('/state?c='+P.code+'&t='+P.a+'&v='+P.ver+'&tl='+enc(tlOf($('langA').value)));
+  if(j.ok&&!j.same){if(j.reset)P.msgs.clear();P.openAt=Date.now()-j.now*1000;const tl=tlOf($('langA').value);
    for(const m of j.msgs){if(!P.loaded)P.spoken.add(m.id);if(m.t)m['t_'+tl]=m.t;P.msgs.set(m.id,Object.assign(P.msgs.get(m.id)||{},m));}
-   P.ver=j.v;if(j.more)again=0;else P.loaded=true;passRender();}}catch(e){again=2500;}
+   P.ver=j.v;if(j.more)again=0;else{P.loaded=true;again=pace(true);}passRender();}}catch(e){again=2500;}
  if(P.code)P.timer=setTimeout(passPoll,again);}
 function passLine(m,side){const lang=$(side==='A'?'langA':'langB').value,tl=tlOf(lang);const mine=(side==='A')===(m.w===0);
  if(!needsTr(m,tl))return {t:m.x,mine};const k='t_'+tl;if(m[k])return {t:m[k],mine};
@@ -531,8 +550,9 @@ $('tvLang').onchange=()=>{store.set('tvLang',$('tvLang').value);tvRender();};
 document.addEventListener('pointerdown',()=>{if(!$('tv').hidden&&!T.voice){T.voice=true;$('tvTap').hidden=true;}});
 async function tvPoll(){clearTimeout(T.timer);let again=1000;
  const tl=tlOf($('tvLang').value);
- try{const j=await (await fetch('/state?c='+T.code+'&v='+T.ver+'&tl='+enc(tl))).json();
-  if(j.ok){if(j.reset)T.msgs.clear();T.people=j.people;
+ try{const j=await getJ('/state?c='+T.code+'&v='+T.ver+'&tl='+enc(tl));
+  if(j.ok&&j.same){}
+  else if(j.ok){if(j.reset)T.msgs.clear();T.people=j.people;
    for(const m of j.msgs){if(!T.loaded)T.spoken.add(m.id);if(m.t)m['t_'+tl]=m.t;T.msgs.set(m.id,Object.assign(T.msgs.get(m.id)||{},m));}
    T.ver=j.v;if(j.more)again=0;else T.loaded=true;tvRender();}
   else $('caps').innerHTML='<div class="cap"><div class="t">No room '+esc(T.code)+' on this board.</div></div>';}catch(e){again=2500;}
@@ -544,6 +564,9 @@ function tvRender(){const ids=[...T.msgs.keys()].sort((a,b)=>a-b).slice(-4);
   return '<div class="cap'+(i<ids.length-1?' old':'')+'"><div class="n" style="color:'+(m.w>=0?COLORS[m.w%10]:'')+'">'+esc(m.n)+'</div><div class="t">'+esc(t||m.x)+'</div></div>';}).join('');
  $('tvLive').textContent=T.people.filter(p=>p.live).map(p=>p.n+': '+p.live+'\u2026').join('   ');
  for(const id of ids){if(T.spoken.has(id))continue;const t=tvText(T.msgs.get(id));if(t==null)continue;T.spoken.add(id);if(T.voice)speak(t,$('tvLang').value);}}
+
+document.addEventListener('visibilitychange',()=>{if(document.hidden)return;
+ if(R.code&&!$('room').hidden)poll();else if(P.code)passPoll();else if(T.code)tvPoll();});
 
 // ── start ────────────────────────────────────────────────────────────────────
 (function(){const h=new URLSearchParams(location.hash.slice(1));

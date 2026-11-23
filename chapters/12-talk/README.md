@@ -83,6 +83,27 @@ the phones, and a room can hold any number of languages.
 `http://talk.local` (port 80) for screens that only read, such as the TV. Reading screens get no
 warning and cost the board much less memory. Both doors answer through the same `route()`.
 
+**Keeping a room light.** On the board, the first version let one phone shut everyone else out.
+Each secure connection holds **about 37 KB**, because the TLS library in this ESP32 core has fixed
+16 KB buffers each way, which a sketch can't change. So the board can keep only about three open.
+The page sent its requests in parallel (the poll, a message, a translation, the live line, even a
+favicon), so a single phone could open several connections at once. The log filled with
+`mbedtls_ssl_setup returned -0x7F00` (out of memory), and the second phone couldn't connect. Now:
+- **One connection per phone.** Every request to the board waits its turn in a queue on the
+  phone, and the favicon request is gone. Tested: no phone ever had more than one request open.
+- **"Nothing new" costs a few bytes.** A phone sends the version it has. If nothing changed, the
+  answer is `{"ok":true,"same":true,"v":42}`, and most polls end there.
+- **Polling follows the room:** every 0.8 s while someone is talking or listening, every 2 s
+  when the room is quiet, and every 5 s when the screen is off.
+- **The "speaking now" line** sends only the newest words, at most every 0.7 s.
+- **Reconnecting is cheap.** With session tickets, a phone whose connection was closed to make
+  room skips most of the handshake when it comes back. A handshake that stalls gives up after
+  5 seconds, rather than holding 37 KB.
+- **A quiet log.** A browser abandoning a handshake (`-0x7780`) is normal while a phone is on the
+  "not private" warning, so those lines are hidden. Instead, a line every minute shows rooms,
+  people, https requests and the largest free block of memory, which is what a new secure
+  connection needs.
+
 ## Endpoints
 
 All take the room code `c`. Those marked *seat* also need your seat token `t`. Every answer is JSON.
@@ -117,9 +138,11 @@ tools/mictest/          step 1: the microphone and translation test that came fi
 
 - **Internet is needed.** Phones need it to listen (most send audio to Google or Apple) and to
   translate. Without home WiFi, the board only offers `devkit-talk` to set WiFi up.
-- **Secure connections:** the board keeps up to **3** https connections open, about 37 KB each.
-  Up to three phones speaking at once is comfortable. A fourth closes the quietest connection,
-  which reconnects on its next poll. Screens that only read should use `http://`.
+- **Secure connections:** the board keeps up to **3** https connections open, about 37 KB each,
+  one per phone. Three phones with the mic stay connected. A fourth closes the quietest
+  connection, which reconnects cheaply on its next poll, so more phones work, with more
+  reconnecting. Screens that only read, like the TV, should use `http://`, which costs the board
+  almost nothing.
 - **Rooms:** 2 at once, 10 seats each (anyone can watch without one). A room keeps about 16 KB of
   text, roughly the last 60 sentences with their translations, and the oldest go first.
 - **Browsers:** listening works in Chrome (Android, computers), Edge, and Safari on iPhone, **not in
@@ -148,7 +171,7 @@ Then open http://localhost:8091. Browsers treat `localhost` as secure, so the mi
 ## Verified, and not
 
 Compiled against arduino-esp32 **3.3.11** for ESP32 Dev Module, on the default partition, with no
-warnings from the sketch: **1,156,640 bytes, 88% of 1.31 MB**, and globals at **22% of RAM**.
+warnings from the sketch: **1,159,036 bytes, 88% of 1.31 MB**, and globals at **22% of RAM**.
 
 **Step 1 on the board itself** (`tools/mictest`):
 - On a Mac in Chrome and an Android phone in Chrome, the board's own certificate made a secure
@@ -159,7 +182,7 @@ warnings from the sketch: **1,156,640 bytes, 88% of 1.31 MB**, and globals at **
   traffic" page. The Chrome extension's address answered normally, so that is the one used.
 
 **The room rules, on a laptop** (`tools/talk_test.cpp`, with address and undefined-behaviour
-sanitizers), **2,259 checks**:
+sanitizers), **2,263 checks**:
 - **Text:** controls, spaces, markup in names, broken UTF-8, and Hindi, Tamil and emoji never cut
   mid-letter at any length.
 - **A room through the same requests the phones send:**
@@ -169,6 +192,8 @@ sanitizers), **2,259 checks**:
   - the speaker's own translation is accepted along with the message;
   - live lines come and go, and saying something clears yours;
   - clearing tells phones to start again;
+  - an unchanged room is a reply under 40 bytes, and someone going away or coming back still
+    reaches phones that only ask "anything new?";
   - host hand-over, leaving, the last one out closing the room, room and seat limits, a seat
     away 10 minutes going to someone new, idle rooms closing.
 - **The worst reply:** ten people with live lines of quotes and long messages of quotes. 9 KB of
@@ -192,11 +217,18 @@ translation from the page:
   and the reply came back in Hindi.
 - Tools: "Good morning, where is the station?" became Tamil. Dictation kept two sentences.
 - The host cleared the room, and Ben's screen emptied.
+- No phone ever had more than one request to the board open at once (27 requests on the
+  busiest).
+
+**On the board, the first full version** with a Mac and phones: one phone connected, and the
+others could not. That's the problem described above under *Keeping a room light*, and it's
+fixed in this version.
 
 **Not yet confirmed:**
 - the full chapter on the board with real phones;
 - iPhone Safari (only Mac and Android were tried in step 1);
-- how three phones speaking over https at once feel on the board.
+- this version on the board with several phones: how many can speak at once before
+  reconnecting slows things down.
 
 ## Sources
 

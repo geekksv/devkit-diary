@@ -192,6 +192,25 @@ static void testRoom() {
   st = call("/state", {{"c", c}, {"t", tb}});
   CHECK(st["people"].a[0]["live"].s.empty(), "saying clears the live line");
 
+  // Nothing new: a few bytes. Something new: the change.
+  pb.sync();
+  int len = 0;
+  J same = call("/state", {{"c", c}, {"t", tb}, {"v", std::to_string(pb.v)}, {"tl", "en"}}, nullptr, &len);
+  CHECK(same["same"].b && len < 40 && (uint32_t)same["v"].n == pb.v, "an unchanged room is a short reply (%d bytes)", len);
+  call("/say", {{"c", c}, {"t", ta}, {"x", "नया संदेश"}});
+  J changed = call("/state", {{"c", c}, {"t", tb}, {"v", std::to_string(pb.v)}, {"tl", "en"}});
+  CHECK(!changed["same"].b && changed["msgs"].a.size() == 1, "a change is not 'same'");
+  // Going away and coming back both reach phones that only ever ask "anything new?".
+  pb.sync();
+  const uint32_t vBefore = pb.v;
+  for (int k = 0; k < 5; k++) { clk += 6000; call("/state", {{"c", c}, {"t", tb}, {"v", std::to_string(pb.v)}}); tick(clk); }
+  J aw = call("/state", {{"c", c}, {"t", tb}, {"v", std::to_string(vBefore)}});
+  CHECK(!aw["same"].b && aw["people"].a[0]["away"].b, "someone going quiet shows as away to phones that only poll for changes");
+  pb.sync();
+  call("/state", {{"c", c}, {"t", ta}});                                     // Asha is back
+  J back = call("/state", {{"c", c}, {"t", tb}, {"v", std::to_string(pb.v)}});
+  CHECK(!back["same"].b && !back["people"].a[0]["away"].b, "coming back shows too");
+
   // Clear: phones with older versions are told to start again.
   CHECK(!call("/clear", {{"c", c}, {"t", tb}})["ok"].b, "only the host clears");
   CHECK(call("/clear", {{"c", c}, {"t", ta}})["ok"].b, "host clears");

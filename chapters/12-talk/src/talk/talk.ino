@@ -23,7 +23,10 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <esp_random.h>
+#include <esp_log.h>
+#include <esp_heap_caps.h>
 #include <vector>
+#include <atomic>
 #include <string>
 #include "ui.h"
 #include "improv.h"
@@ -34,7 +37,12 @@
 #include "serve.h"
 
 const char *HOST = "talk";
-const int SECURE_SOCKETS = 3;            // each open https connection holds ~37 KB of memory
+// Each open https connection holds ~37 KB: the TLS library in this ESP32 core has fixed 16 KB
+// buffers each way, which a sketch cannot change. Three fit with room to spare. Phones keep one
+// connection each (the page queues its requests), and a fourth phone closes the quietest
+// connection, which reconnects cheaply on its next poll thanks to session tickets.
+const int SECURE_SOCKETS = 3;
+static std::atomic<uint32_t> secureRequests{0};   // counted on the https task, read on loop()
 
 WebServer web(80);
 static httpd_handle_t secure = nullptr;
@@ -63,8 +71,13 @@ static esp_err_t sendJson(httpd_req_t *r, const std::string &s) {
 }
 
 static esp_err_t sAny(httpd_req_t *r) {
+  secureRequests++;
   const char *q = strchr(r->uri, '?');
   const std::string path(r->uri, q ? q - r->uri : strlen(r->uri));
+  if (path == "/favicon.ico") {            // browsers ask; answering costs nothing, a 404 page more
+    httpd_resp_set_status(r, "204 No Content");
+    return httpd_resp_send(r, nullptr, 0);
+  }
   if (path == "/") {
     httpd_resp_set_type(r, "text/html; charset=utf-8");
     httpd_resp_set_hdr(r, "Cache-Control", "no-store");
@@ -99,6 +112,14 @@ static void startSecure() {
   conf.httpd.lru_purge_enable = true;    // one more phone closes the quietest connection
   conf.httpd.uri_match_fn = httpd_uri_match_wildcard;
   conf.httpd.stack_size = 8192;
+  conf.session_tickets = true;           // a phone that reconnects skips most of the handshake
+  conf.tls_handshake_timeout_ms = 5000;  // a stalled handshake must not hold 37 KB for long
+  // A phone still on the "not private" warning, or a browser opening a spare connection and
+  // dropping it, ends a handshake early. That is normal, and would otherwise fill the log.
+  esp_log_level_set("esp-tls-mbedtls", ESP_LOG_NONE);
+  esp_log_level_set("esp-tls", ESP_LOG_NONE);
+  esp_log_level_set("esp_https_server", ESP_LOG_NONE);
+  esp_log_level_set("httpd", ESP_LOG_NONE);
   const esp_err_t e = httpd_ssl_start(&secure, &conf);
   if (e != ESP_OK) { Serial.printf("talk: https did not start (%s)\n", esp_err_to_name(e)); return; }
   static const httpd_uri_t get = {"/*", HTTP_GET, sAny, nullptr};
@@ -125,6 +146,7 @@ void setup() {
   });
   for (const char *p : {"/rooms", "/create", "/join", "/state", "/say", "/live", "/tr", "/me", "/leave", "/clear"})
     web.on(p, webApi);
+  web.on("/favicon.ico", [] { web.send(204); });
   web.onNotFound([] { web.send(404, "text/plain", "not here"); });
   web.begin();
   startSecure();
@@ -145,7 +167,16 @@ void loop() {
   }
   if (now - lastLog >= 60000) {
     lastLog = now;
-    Serial.printf("talk: %lu bytes free, lowest %lu\n", (unsigned long)ESP.getFreeHeap(), (unsigned long)ESP.getMinFreeHeap());
+    int rooms_ = 0, people = 0;
+    xSemaphoreTake(lock, portMAX_DELAY);
+    for (auto &r : rooms) if (r.used) { rooms_++; for (auto &p : r.p) people += p.used && !p.away; }
+    xSemaphoreGive(lock);
+    // The largest free block matters more than the total: a new secure connection needs two
+    // 16 KB pieces in one go.
+    Serial.printf("talk: %d room(s), %d people, %lu https requests/min, %lu bytes free (largest block %lu, lowest %lu)\n",
+                  rooms_, people, (unsigned long)secureRequests.load(), (unsigned long)ESP.getFreeHeap(),
+                  (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT), (unsigned long)ESP.getMinFreeHeap());
+    secureRequests = 0;
   }
   delay(2);
 }
