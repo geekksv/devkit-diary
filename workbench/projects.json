@@ -121,6 +121,18 @@
       "host": "tambola",
       "partition": "default",
       "after": "Open http://tambola.local on your phone and start a game; open the caller screen on a TV or laptop"
+    },
+    {
+      "id": "12-talk-mictest",
+      "title": "Talk: microphone test",
+      "chapter": "chapters/12-talk",
+      "sketch": "chapters/12-talk/tools/mictest",
+      "description": "Step 1 of chapter 12, a test: can a phone use its microphone on the board's own https page? Speak, see the words, the board translates them, the phone says them back.",
+      "wifi": "devkit-talk",
+      "wifi_setup": true,
+      "host": "talk",
+      "partition": "default",
+      "after": "Open https://talk.local on your phone, accept the 'not private' warning once, and tap the mic. Send me the Report box at the bottom."
     }
   ],
   "devices": [
