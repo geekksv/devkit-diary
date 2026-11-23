@@ -123,16 +123,16 @@
       "after": "Open http://tambola.local on your phone and start a game; open the caller screen on a TV or laptop"
     },
     {
-      "id": "12-talk-mictest",
-      "title": "Talk: microphone test",
+      "id": "12-talk",
+      "title": "Talk across languages",
       "chapter": "chapters/12-talk",
-      "sketch": "chapters/12-talk/tools/mictest",
-      "description": "Step 1 of chapter 12, a test: can a phone use its microphone on the board's own https page? Speak, see the words, the board translates them, the phone says them back.",
+      "sketch": "chapters/12-talk/src/talk",
+      "description": "Everyone in the room speaks and reads in their own language, in 25 languages from Hindi and Tamil to Japanese. Phones listen, translate and speak; the board keeps the room, with live captions for a TV.",
       "wifi": "devkit-talk",
       "wifi_setup": true,
       "host": "talk",
       "partition": "default",
-      "after": "Open https://talk.local on your phone, accept the 'not private' warning once, and tap the mic. Send me the Report box at the bottom."
+      "after": "Open https://talk.local on your phone and accept the 'not private' warning once (the board made its own certificate). For captions on a TV, open http://talk.local/#tv=CODE"
     }
   ],
   "devices": [
