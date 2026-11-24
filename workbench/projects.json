@@ -133,6 +133,18 @@
       "host": "talk",
       "partition": "default",
       "after": "Open https://talk.local on your phone and accept the 'not private' warning once (the board made its own certificate). For captions on a TV, open http://talk.local/#tv=CODE"
+    },
+    {
+      "id": "13-clip",
+      "title": "One clipboard",
+      "chapter": "chapters/13-clipboard",
+      "sketch": "chapters/13-clipboard/src/clip",
+      "description": "Copy on one device, paste on another: computers sync by themselves, phones in one tap. History, pins, one-time items and a hotkey picker. End-to-end encrypted: the board never sees your clipboard.",
+      "wifi": "devkit-clip",
+      "wifi_setup": true,
+      "host": "clip",
+      "partition": "default",
+      "after": "On each computer run: curl -fsSL http://clip.local/i | sh  (Windows: irm http://clip.local/i.ps1 | iex). On phones open https://clip.local"
     }
   ],
   "devices": [

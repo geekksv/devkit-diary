@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1115" media="(prefers-color-scheme: dark)">
+<title>Clipboard</title>
+<link rel="icon" href="data:,">
+<style>
+:root{--bg:#f6f7f9;--surface:#fff;--surface2:#f0f2f5;--line:#e2e5ea;--text:#151922;--muted:#667085;--acc:#3557d4;--acc-ink:#fff;--acc-soft:#e9eefc;
+ --danger:#c93b3b;--ok:#0f8a5f;--warn:#b7791f;--warn-soft:#fdf6e7;--shadow:0 1px 2px rgba(16,24,40,.05),0 1px 3px rgba(16,24,40,.07);--pop:0 12px 32px rgba(16,24,40,.16);--r:12px}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1115;--surface:#171a21;--surface2:#1f232c;--line:#2b303b;--text:#e7e9ee;--muted:#959cab;--acc:#6f8cff;--acc-ink:#0f1115;
+ --acc-soft:#1d2540;--danger:#ef6b6b;--ok:#4fd1a0;--warn:#e0a84a;--warn-soft:#2a2416;--shadow:none;--pop:0 12px 32px rgba(0,0,0,.5)}}
+*{box-sizing:border-box}html,body{min-height:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans",sans-serif;-webkit-font-smoothing:antialiased}
+[hidden]{display:none!important}
+.ic{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none;vertical-align:middle}
+.ic.s{width:16px;height:16px}
+.wrap{max-width:640px;margin:0 auto;padding:16px 16px 120px}
+h1{font-size:20px;line-height:1.2;margin:0;letter-spacing:-.01em}h2{font-size:15px;margin:0 0 10px;font-weight:600}
+p{margin:6px 0}.muted{color:var(--muted)}.small{font-size:13px}
+.brand{display:flex;gap:12px;align-items:center}
+.mark{width:38px;height:38px;border-radius:11px;background:var(--acc);color:var(--acc-ink);display:grid;place-items:center;flex:none}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin:12px 0;box-shadow:var(--shadow)}
+.field{display:block;margin:0 0 12px}.field>span{display:block;font-size:13px;font-weight:500;color:var(--muted);margin-bottom:6px}
+.row{display:flex;gap:8px;align-items:center}.row>*{min-width:0}.grow{flex:1}
+select,input,textarea{font:inherit;color:var(--text);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;width:100%;outline:none}
+select:focus,input:focus,textarea:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-soft)}
+textarea{min-height:110px;resize:vertical}
+.btn{font:inherit;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:10px;padding:10px 16px;cursor:pointer;
+ border:1px solid transparent;background:var(--acc);color:var(--acc-ink);touch-action:manipulation;white-space:nowrap}
+.btn:active{transform:scale(.98)}.btn.sec{background:var(--surface);color:var(--text);border-color:var(--line)}
+.btn.ghost{background:transparent;color:var(--text)}.btn.danger{background:transparent;color:var(--danger);border-color:var(--line)}
+.btn.block{width:100%}.btn.sm{padding:6px 12px;font-size:13px}
+.iconbtn{width:38px;height:38px;padding:0;border-radius:10px;background:transparent;color:var(--text);border:1px solid transparent;display:inline-grid;place-items:center;cursor:pointer}
+.iconbtn:hover{background:var(--surface2)}.iconbtn.on{color:var(--acc)}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+a{color:var(--acc);text-decoration:none}
+.notice{display:flex;gap:12px;align-items:flex-start;border-radius:var(--r);padding:14px;margin:12px 0;background:var(--warn-soft);border:1px solid color-mix(in srgb,var(--warn) 35%,transparent)}
+.notice .ic{color:var(--warn);margin-top:2px}
+.err{color:var(--danger);font-size:13px;min-height:1em;margin:8px 0 0}
+code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px}
+pre.cmd{background:var(--surface2);border-radius:8px;padding:10px 12px;margin:6px 0;white-space:pre-wrap;word-break:break-all}
+.top{position:sticky;top:0;z-index:4;background:var(--bg);display:flex;gap:8px;align-items:center;padding:12px 0 10px}
+.devs{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--muted)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--line);display:inline-block}.dot.on{background:var(--ok)}
+.tools{display:flex;gap:8px;align-items:center;margin:4px 0 12px}
+.seg{display:flex;background:var(--surface2);border-radius:10px;padding:3px;gap:3px}
+.seg button{border:0;background:transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:500;padding:6px 12px;border-radius:8px;cursor:pointer}
+.seg button.sel{background:var(--surface);color:var(--text);box-shadow:var(--shadow)}
+.search{position:relative;flex:1}.search input{padding-left:34px}.search .ic{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted)}
+.item{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;margin:0 0 10px;box-shadow:var(--shadow)}
+.item .meta{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--muted);flex-wrap:wrap}
+.item .meta b{color:var(--text);font-weight:600}
+.badge{display:inline-flex;gap:4px;align-items:center;background:var(--surface2);border-radius:6px;padding:1px 7px;font-size:11px;font-weight:600;color:var(--muted)}
+.badge.acc{background:var(--acc-soft);color:var(--acc)}
+.item .body{margin:8px 0 10px;word-wrap:break-word;white-space:pre-wrap;display:-webkit-box;-webkit-line-clamp:6;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer}
+.item .body.open{display:block}
+.item .otp{font:700 30px/1.2 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.18em;margin:10px 0}
+.item img{max-width:100%;max-height:260px;border-radius:8px;display:block;margin:8px 0 10px;background:var(--surface2)}
+.item .acts{display:flex;gap:4px;align-items:center}
+.item .acts .btn{padding:6px 12px;font-size:13px}
+.empty{text-align:center;color:var(--muted);padding:48px 16px}.empty .ic{width:36px;height:36px;color:var(--acc);margin-bottom:8px}
+.bar{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:10px 16px calc(10px + env(safe-area-inset-bottom));z-index:5}
+.bar .row{max-width:640px;margin:0 auto}
+.sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:8;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:var(--surface);width:100%;max-width:640px;max-height:88vh;overflow:auto;border-radius:16px 16px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));box-shadow:var(--pop)}
+.sheet .head{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.list .li{display:flex;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}.list .li:first-child{border:0}
+.menu{position:fixed;z-index:9;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:6px;min-width:210px;box-shadow:var(--pop)}
+.menu button{display:flex;gap:12px;align-items:center;width:100%;text-align:left;background:none;border:0;color:var(--text);font:inherit;padding:9px 12px;border-radius:8px;cursor:pointer}
+.menu button:hover{background:var(--surface2)}.menu button .ic{color:var(--muted)}.menu .danger,.menu .danger .ic{color:var(--danger)}
+.menu .label{font-size:12px;color:var(--muted);padding:6px 12px 2px}
+.toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);background:var(--text);color:var(--bg);border-radius:10px;padding:10px 14px;z-index:10;max-width:calc(100% - 32px);text-align:center;font-size:14px;box-shadow:var(--pop)}
+.check{display:flex;gap:8px;align-items:center;font-size:14px}.check input{width:auto}
+.meter{height:6px;background:var(--surface2);border-radius:3px;overflow:hidden}.meter div{height:100%;background:var(--acc)}
+</style></head><body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+<symbol id="i-clip" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 4a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1"/><path d="M9 11h6M9 15h4"/></symbol>
+<symbol id="i-paste" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M12 9v8M8.5 13.5 12 17l3.5-3.5"/></symbol>
+<symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4.5A1.5 1.5 0 0 1 3 13.5v-9A1.5 1.5 0 0 1 4.5 3h9A1.5 1.5 0 0 1 15 4.5V5"/></symbol>
+<symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 17v4M8 3h8l-1 6 3 4H6l3-4z"/></symbol>
+<symbol id="i-more" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r=".8"/><circle cx="12" cy="12" r=".8"/><circle cx="18.5" cy="12" r=".8"/></symbol>
+<symbol id="i-send" viewBox="0 0 24 24"><path d="M21 3 10 14M21 3l-7 18-4-7-7-4z"/></symbol>
+<symbol id="i-open" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
+<symbol id="i-call" viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a1 1 0 0 1-1 1A16 16 0 0 1 4 5a1 1 0 0 1 1-1"/></symbol>
+<symbol id="i-vol" viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></symbol>
+<symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5M14 11v5"/></symbol>
+<symbol id="i-laptop" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/></symbol>
+<symbol id="i-phone" viewBox="0 0 24 24"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M11 18.5h2"/></symbol>
+<symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+<symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></symbol>
+<symbol id="i-lock" viewBox="0 0 24 24"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></symbol>
+<symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+<symbol id="i-once" viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9.5 2.5h5"/></symbol>
+<symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m20.5 16-5-5-8.5 8.5"/></symbol>
+<symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
+<symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+</svg>
+
+<!-- not secure: only how to get to the secure page, and the helper lines (those work from here) -->
+<div class="wrap" id="insecure" hidden>
+ <div class="brand" style="margin:8px 0 14px"><div class="mark"><svg class="ic"><use href="#i-clip"/></svg></div><div><h1>Clipboard</h1><div class="muted small">One clipboard for every device</div></div></div>
+ <div class="notice"><svg class="ic"><use href="#i-lock"/></svg><div><b>Open the secure page</b>
+  <p class="small" style="margin:4px 0 0">Encryption and the clipboard only work on secure pages. Open <a id="secLink" href="#"></a>.
+  The first time, the browser says the page is "not private", because the board made its own certificate.
+  Android: <i>Advanced</i>, then <i>Proceed</i>. iPhone: <i>Show details</i>, then <i>visit this website</i>.</p></div></div>
+ <div class="card" id="installCard1"></div>
+</div>
+
+<!-- joining -->
+<div class="wrap" id="setup" hidden>
+ <div class="brand" style="margin:8px 0 14px"><div class="mark"><svg class="ic"><use href="#i-clip"/></svg></div><div><h1>Clipboard</h1><div class="muted small">One clipboard for every device</div></div></div>
+ <div class="card">
+  <h2 id="suTitle"></h2>
+  <p class="muted small" id="suText"></p>
+  <label class="field" style="margin-top:12px"><span>This device</span><input id="suName" maxlength="24" placeholder="e.g. Asha's phone"></label>
+  <label class="field"><span>Passphrase</span><input id="suP1" type="password" autocomplete="new-password"></label>
+  <label class="field" id="suAgain"><span>The same again</span><input id="suP2" type="password" autocomplete="new-password"></label>
+  <button class="btn block" id="suGo"></button>
+  <p class="err" id="suErr"></p>
+ </div>
+ <p class="small muted"><svg class="ic s"><use href="#i-lock"/></svg> Everything is sealed on your devices with this passphrase. The board only ever holds scrambled bytes,
+ so it can't read your clipboard, and neither can anyone else on the WiFi.</p>
+</div>
+
+<!-- the clipboard -->
+<div class="wrap" id="main" hidden>
+ <div class="top">
+  <div class="mark" style="width:34px;height:34px;border-radius:10px"><svg class="ic"><use href="#i-clip"/></svg></div>
+  <div class="grow"><h1>Clipboard</h1><div class="devs" id="devSum"></div></div>
+  <button class="iconbtn" id="openDevices" aria-label="Devices"><svg class="ic"><use href="#i-laptop"/></svg></button>
+  <button class="iconbtn" id="openSettings" aria-label="Settings"><svg class="ic"><use href="#i-gear"/></svg></button>
+ </div>
+ <div class="tools">
+  <div class="search"><svg class="ic s"><use href="#i-search"/></svg><input id="q" placeholder="Search" autocomplete="off"></div>
+  <div class="seg"><button data-f="all" class="sel">All</button><button data-f="pins">Pinned</button></div>
+ </div>
+ <div id="list"></div>
+</div>
+<div class="bar" id="bar" hidden><div class="row">
+ <button class="btn grow" id="pasteBtn"><svg class="ic"><use href="#i-paste"/></svg>Paste here</button>
+ <button class="btn sec" id="typeBtn"><svg class="ic"><use href="#i-edit"/></svg>Type</button>
+</div></div>
+
+<div class="sheet-bg" id="sheetBg" hidden><div class="sheet" id="sheet"></div></div>
+<div class="menu" id="menu" hidden></div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+/*CRYPTO*/
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const ic=(n,c)=>'<svg class="ic'+(c?' '+c:'')+'" aria-hidden="true"><use href="#i-'+n+'"/></svg>';
+const hex=u=>[...u].map(b=>b.toString(16).padStart(2,'0')).join('');
+const unhex=h=>new Uint8Array((h.match(/../g)||[]).map(x=>parseInt(x,16)));
+const b64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+const F_PIN=1,F_ONCE=2,F_IMAGE=4,F_OPEN=8,T_TEXT=0,T_IMAGE=1;
+const store={get(k,d){try{const v=localStorage.getItem('clip.'+k);return v==null?d:JSON.parse(v)}catch(e){return d}},
+ set(k,v){try{localStorage.setItem('clip.'+k,JSON.stringify(v))}catch(e){}},del(k){try{localStorage.removeItem('clip.'+k)}catch(e){}}};
+let toastT;function toast(t,ms){$('toast').textContent=t;$('toast').hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>$('toast').hidden=true,ms||2600);}
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+
+// ── the board: one request at a time (lesson from chapter 12) ─────────────────────────────────
+let chain=Promise.resolve();
+function queued(fn){const p=chain.then(fn,fn);chain=p.catch(()=>{});return p;}
+async function req(url,opt,as){const c=new AbortController();const t=setTimeout(()=>c.abort(),30000);
+ try{const r=await fetch(url,Object.assign({signal:c.signal},opt||{}));return as==='bytes'?new Uint8Array(await r.arrayBuffer()):await r.json();}finally{clearTimeout(t)}}
+const api=(path,data)=>queued(()=>req(path,{method:'POST',body:new URLSearchParams(data||{})}));
+const getJ=url=>queued(()=>req(url));
+const getBytes=url=>queued(()=>req(url,null,'bytes'));
+const putBytes=(q,bytes)=>queued(()=>req('/put?'+new URLSearchParams(q),{method:'POST',body:bytes,headers:{'Content-Type':'application/octet-stream'}}));
+
+// ── state ────────────────────────────────────────────────────────────────────────────────────
+const S={cfg:null,keys:null,v:0,epoch:0,items:new Map(),devices:[],keep:24,used:0,budget:1,filter:'all',timer:0,polling:false,soon:false};
+const me=()=>S.cfg&&S.cfg.id;
+const devName=id=>(S.devices.find(d=>d.i===id)||{}).n||'a device';
+
+function show(v){for(const x of ['insecure','setup','main'])$(x).hidden=x!==v;$('bar').hidden=v!=='main';}
+
+// ── joining ──────────────────────────────────────────────────────────────────────────────────
+let hello=null;
+async function startSetup(why){
+ show('setup');S.cfg=null;
+ try{hello=await getJ('/hello');}catch(e){$('suErr').textContent='The board did not answer.';return;}
+ const create=!hello.set;
+ $('suTitle').textContent=create?'Start your clipboard group':'Join your clipboard group';
+ $('suText').textContent=why||(create?'Choose a passphrase. Every device types it once. Keep it somewhere safe: if it is lost, the history can’t be opened again.'
+  :'Type the passphrase you chose on your first device.');
+ $('suAgain').hidden=!create;$('suGo').textContent=create?'Start':'Join';
+ $('suName').value=store.get('name','')||(/iPhone|Android/.test(navigator.userAgent)?'Phone':'Browser');}
+$('suGo').onclick=async()=>{
+ const p=$('suP1').value,create=!hello.set,name=$('suName').value.trim()||'Phone';
+ if(p.length<6){$('suErr').textContent='At least 6 characters.';return;}
+ if(create&&$('suP2').value!==p){$('suErr').textContent='The two don’t match.';return;}
+ $('suErr').textContent='';$('suGo').disabled=true;$('suGo').textContent='Working…';
+ try{
+  const salt=unhex(hello.salt);const raw=await clipDeriveRaw(p,salt);
+  if(create){const r=await api('/setup',{salt:hello.salt,auth:hex(raw.auth)});if(!r.ok)throw new Error(r.err);}
+  const keys=await clipImport(raw);const ch=await getJ('/challenge');
+  const r=await api('/join',{n:ch.n,a:await clipAnswer(keys,unhex(ch.n)),name,kind:1});
+  if(!r.ok)throw new Error(r.err);
+  store.set('name',name);
+  S.cfg={t:r.t,id:r.id,name,salt:hello.salt,epoch:hello.epoch,enc:hex(raw.enc),mac:hex(raw.mac),auth:hex(raw.auth)};
+  store.set('cfg',S.cfg);await begin();
+ }catch(e){$('suErr').textContent={proof:'That passphrase doesn’t match your group’s.',wait:'Too many wrong tries. Wait a minute.',
+  full:'The group already has 12 devices.',already:'Someone just started the group. Join it instead.'}[e.message]||('Could not join: '+e.message);
+  if(e.message==='already')startSetup();}
+ $('suGo').disabled=false;$('suGo').textContent=hello&&!hello.set?'Start':'Join';};
+
+async function begin(){
+ S.keys=await clipImport({enc:unhex(S.cfg.enc),mac:unhex(S.cfg.mac),auth:unhex(S.cfg.auth)});
+ S.v=0;S.epoch=S.cfg.epoch;S.items=new Map();show('main');render();poll();
+ if(location.hash==='#paste')toast('Tap Paste here to send this phone’s clipboard',4000);}
+
+// ── keeping in step ──────────────────────────────────────────────────────────────────────────
+function pace(){return document.hidden?6000:2000;}
+async function poll(){clearTimeout(S.timer);if(!S.cfg)return;if(S.polling){S.soon=true;return;}S.polling=true;let again=pace();
+ try{const j=await getJ('/state?'+new URLSearchParams({t:S.cfg.t,v:S.v,epoch:S.epoch}));
+  if(!j.ok){if(j.err==='notin'||j.err==='nogroup'){store.del('cfg');S.polling=false;startSetup('This device is no longer in the group (it was removed, or the group was reset). Join again.');return;}throw 0;}
+  if(!j.same){
+   if(j.epoch!==S.epoch){S.items.clear();S.epoch=j.epoch;}
+   S.devices=j.devices;S.keep=j.keep;S.used=j.used;S.budget=j.budget;
+   const ids=new Set(j.ids);
+   for(const it of j.items){const old=S.items.get(it.id);S.items.set(it.id,Object.assign(old||{},it));}
+   for(const id of [...S.items.keys()])if(!ids.has(id))S.items.delete(id);
+   S.v=j.v;if(j.more)again=0;
+   await openInline();render();}
+ }catch(e){again=4000;}
+ S.polling=false;if(S.soon){S.soon=false;again=0;}if(S.cfg)S.timer=setTimeout(poll,again);}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&S.cfg)poll();});
+
+// Small items come sealed inside /state; open them now. Big ones are opened when shown.
+async function openInline(){for(const it of S.items.values()){if(it.plain||!it.b)continue;
+ try{const p=await clipUnseal(S.keys,b64(it.b));it.plain={kind:p[0],data:p.subarray(1)};}catch(e){it.bad=true;}delete it.b;}}
+async function openItem(it){if(it.plain||it.bad||it.opening)return it.plain;it.opening=true;
+ try{const raw=await getBytes('/blob?'+new URLSearchParams({t:S.cfg.t,id:it.id}));const p=await clipUnseal(S.keys,raw);it.plain={kind:p[0],data:p.subarray(1)};}
+ catch(e){it.bad=true;}it.opening=false;return it.plain;}
+const textOf=it=>it.plain&&it.plain.kind===T_TEXT?new TextDecoder().decode(it.plain.data):'';
+
+// ── showing the list ─────────────────────────────────────────────────────────────────────────
+function ago(t){if(!t)return '';const s=Math.max(0,Date.now()/1000-t|0);return s<60?'just now':s<3600?(s/60|0)+' min ago':s<86400?(s/3600|0)+' h ago':(s/86400|0)+' d ago';}
+function render(){
+ const on=S.devices.filter(d=>d.on).length;
+ $('devSum').innerHTML='<span class="dot'+(on?' on':'')+'"></span>'+S.devices.length+' device'+(S.devices.length===1?'':'s')+', '+on+' online';
+ const q=$('q').value.trim().toLowerCase();
+ let list=[...S.items.values()].filter(it=>!(it.f&F_OPEN)||it.from===me());
+ if(S.filter==='pins')list=list.filter(it=>it.f&F_PIN);
+ if(q)list=list.filter(it=>textOf(it).toLowerCase().includes(q));
+ list.sort((a,b)=>((b.f&F_PIN)-(a.f&F_PIN))||(b.id-a.id));
+ if(!list.length){$('list').innerHTML='<div class="empty">'+ic('clip')+'<div>'+(q?'Nothing matches.':S.filter==='pins'?'Pin things you paste often: an address, the WiFi password.':
+  'Nothing yet. Copy something on a computer with the helper, or tap Paste here.')+'</div></div>';return;}
+ const html=list.map(itemHtml).join('');
+ if($('list').dataset.h!==html){$('list').innerHTML=html;$('list').dataset.h=html;wire();}
+ for(const it of list)if(!it.plain&&!it.bad&&!(it.f&F_ONCE))openItem(it).then(p=>p&&render());}
+function itemHtml(it){
+ const mine=it.from===me(),badges=[];
+ if(it.f&F_PIN)badges.push('<span class="badge acc">'+ic('pin','s')+'Pinned</span>');
+ if(it.f&F_ONCE)badges.push('<span class="badge">'+ic('once','s')+'One time</span>');
+ if(it.to)badges.push('<span class="badge">'+(it.to===me()?'For this device':'For '+esc(devName(it.to)))+'</span>');
+ const meta='<div class="meta"><b>'+(mine?'This device':esc(devName(it.from)))+'</b><span>'+ago(it.at)+'</span>'+badges.join('')+'</div>';
+ let body;
+ if(it.f&F_ONCE&&!it.plain)body='<p class="muted small" style="margin:8px 0 10px">'+(mine?'Waiting for another device to take it. It disappears after the first one, or in 2 minutes.':'Shown once: copying it removes it everywhere.')+'</p>';
+ else if(it.bad)body='<p class="err">Can’t open this one: it was sealed with another passphrase, or changed.</p>';
+ else if(!it.plain)body='<p class="muted small" style="margin:8px 0 10px">Opening…</p>';
+ else if(it.plain.kind===T_IMAGE){if(!it.url)it.url=URL.createObjectURL(new Blob([it.plain.data],{type:'image/png'}));body='<img src="'+it.url+'" alt="Image">';}
+ else{const t=textOf(it);body=/^\s*\d{4,8}\s*$/.test(t)?'<div class="otp">'+esc(t.trim())+'</div>':'<div class="body" data-x>'+esc(t)+'</div>';}
+ const canCopy=!(it.f&F_ONCE)||!mine;
+ return '<div class="item" data-id="'+it.id+'">'+meta+body+'<div class="acts">'+
+  (canCopy?'<button class="btn" data-a="copy">'+ic('copy','s')+(it.f&F_ONCE&&!mine?'Take':'Copy')+'</button>':'')+
+  (it.f&F_ONCE?'':'<button class="iconbtn'+(it.f&F_PIN?' on':'')+'" data-a="pin" aria-label="Pin">'+ic('pin')+'</button>')+
+  '<span class="grow"></span><button class="iconbtn" data-a="more" aria-label="More">'+ic('more')+'</button></div></div>';}
+function wire(){document.querySelectorAll('.item').forEach(el=>{const it=S.items.get(+el.dataset.id);if(!it)return;
+ el.querySelectorAll('[data-a]').forEach(b=>b.onclick=e=>act(b.dataset.a,it,e));
+ const x=el.querySelector('[data-x]');if(x)x.onclick=()=>x.classList.toggle('open');});}
+
+// ── actions ──────────────────────────────────────────────────────────────────────────────────
+async function copyOut(p){
+ if(p.kind===T_TEXT){const t=new TextDecoder().decode(p.data);
+  try{await navigator.clipboard.writeText(t);}catch(e){const a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();document.execCommand('copy');a.remove();}}
+ else{await navigator.clipboard.write([new ClipboardItem({'image/png':new Blob([p.data],{type:'image/png'})})]);}}
+async function act(a,it,e){
+ if(a==='copy'){const p=await openItem(it);if(!p){toast('This one has gone.');return;}
+  try{await copyOut(p);toast(it.f&F_ONCE?'Copied. It is gone from the other devices.':'Copied');}catch(err){toast('This browser would not copy it.');}
+  if(it.f&F_ONCE){S.items.delete(it.id);render();poll();}return;}
+ if(a==='pin'){const r=await api('/pin',{t:S.cfg.t,id:it.id,on:it.f&F_PIN?0:1});if(!r.ok)toast(r.err==='full'?'30 pins at most':'Could not pin');poll();return;}
+ if(a==='more'){const t=textOf(it),link=/^\s*https?:\/\/\S+\s*$/i.test(t),phone=/^\s*\+?[\d\s()-]{7,16}\s*$/.test(t)&&!/^\s*\d{4,8}\s*$/.test(t);
+  const others=S.devices.filter(d=>d.i!==me()),computers=others.filter(d=>d.k===0);
+  const rows=[];
+  if(link)rows.push(['open','Open here']);
+  if(link&&computers.length){rows.push(['label','Open on']);for(const d of computers)rows.push(['openon:'+d.i,d.n,'laptop']);}
+  if(phone)rows.push(['call','Call']);
+  if(t&&window.speechSynthesis)rows.push(['say','Read aloud','vol']);
+  if(it.plain&&others.length&&!(it.f&F_ONCE)){rows.push(['label','Send to']);for(const d of others)rows.push(['to:'+d.i,d.n,d.k?'phone':'laptop']);}
+  if(it.plain&&it.plain.kind===T_IMAGE)rows.push(['save','Save image','down']);
+  rows.push(['del','Delete everywhere','trash','danger']);
+  menu(e.currentTarget,rows,async k=>{
+   if(k==='open')window.open(t.trim(),'_blank');
+   else if(k.startsWith('openon:')){await send(T_TEXT,new TextEncoder().encode(t.trim()),F_OPEN,+k.slice(7));toast('Opening on '+devName(+k.slice(7)));}
+   else if(k==='call')location.href='tel:'+t.replace(/[^\d+]/g,'');
+   else if(k==='say'){speechSynthesis.cancel();speechSynthesis.speak(new SpeechSynthesisUtterance(t));}
+   else if(k.startsWith('to:')){await send(it.plain.kind,it.plain.data,0,+k.slice(3));toast('Sent to '+devName(+k.slice(3)));}
+   else if(k==='save'){const a=document.createElement('a');a.href=it.url;a.download='clipboard-'+it.id+'.png';a.click();}
+   else if(k==='del'){await api('/del',{t:S.cfg.t,id:it.id});S.items.delete(it.id);render();poll();}});}}
+function menu(anchor,rows,cb){const m=$('menu');
+ m.innerHTML=rows.map(r=>r[0]==='label'?'<div class="label">'+esc(r[1])+'</div>':'<button data-k="'+esc(r[0])+'" class="'+(r[3]||'')+'">'+ic(r[2]||(r[0]==='call'?'call':'open'))+esc(r[1])+'</button>').join('');
+ m.hidden=false;const b=anchor.getBoundingClientRect();const w=m.offsetWidth,h=m.offsetHeight;
+ m.style.left=Math.max(8,Math.min(innerWidth-w-8,b.right-w))+'px';m.style.top=(b.bottom+h+8<innerHeight?b.bottom+4:Math.max(8,b.top-h-4))+'px';
+ m.querySelectorAll('button').forEach(x=>x.onclick=()=>{m.hidden=true;cb(x.dataset.k);});}
+document.addEventListener('click',e=>{if(!$('menu').hidden&&!$('menu').contains(e.target)&&!e.target.closest('[data-a=more]'))$('menu').hidden=true;},true);
+
+async function send(kind,data,flags,to){
+ const sealed=await clipSeal(S.keys,cat(new Uint8Array([kind]),data));
+ const q={t:S.cfg.t,f:(flags||0)|(kind===T_IMAGE?F_IMAGE:0)};if(to)q.to=to;
+ const r=await putBytes(q,sealed).catch(()=>null);
+ if(!r||!r.ok){toast({big:'Too big for the board (300 KB at most)',paused:'Sharing from this device is paused',noto:'That device is not in the group'}[r&&r.err]||'Not sent');return false;}
+ poll();return true;}
+
+$('pasteBtn').onclick=async()=>{
+ try{if(navigator.clipboard.read){const items=await navigator.clipboard.read();
+   for(const ci of items){if(ci.types.includes('image/png')){const b=new Uint8Array(await (await ci.getType('image/png')).arrayBuffer());
+     if(b.length>300000){toast('That image is too big (300 KB at most)');return;}if(await send(T_IMAGE,b))toast('Image sent');return;}}}
+  const t=await navigator.clipboard.readText();if(!t){toast('The clipboard is empty');return;}
+  if(await send(T_TEXT,new TextEncoder().encode(t)))toast('Sent to your devices');}
+ catch(e){toast('The browser did not allow reading the clipboard. Use Type instead.',4000);}};
+
+$('typeBtn').onclick=()=>sheet('<div class="head"><h2 class="grow" style="margin:0">Send text</h2><button class="iconbtn" data-close>'+ic('x')+'</button></div>'+
+ '<textarea id="tx" placeholder="Type or paste here"></textarea>'+
+ '<label class="field" style="margin-top:12px"><span>To</span><select id="txTo"><option value="0">All my devices</option>'+
+ S.devices.filter(d=>d.i!==me()).map(d=>'<option value="'+d.i+'">'+esc(d.n)+'</option>').join('')+'</select></label>'+
+ '<label class="check"><input type="checkbox" id="txOnce"> One time only (for a password or a code)</label>'+
+ '<button class="btn block" id="txGo" style="margin-top:14px">'+ic('send')+'Send</button>',()=>{
+  setTimeout(()=>$('tx').focus(),50);
+  $('txGo').onclick=async()=>{const t=$('tx').value;if(!t.trim())return;
+   if(await send(T_TEXT,new TextEncoder().encode(t),$('txOnce').checked?F_ONCE:0,+$('txTo').value)){closeSheet();toast('Sent');}};});
+
+// ── sheets: devices and settings ─────────────────────────────────────────────────────────────
+function sheet(html,after){$('sheet').innerHTML=html;$('sheetBg').hidden=false;$('sheet').querySelectorAll('[data-close]').forEach(b=>b.onclick=closeSheet);after&&after();}
+function closeSheet(){$('sheetBg').hidden=true;}
+$('sheetBg').onclick=e=>{if(e.target===$('sheetBg'))closeSheet();};
+
+$('openDevices').onclick=()=>{const rows=S.devices.map(d=>'<div class="li">'+ic(d.k?'phone':'laptop')+'<div class="grow"><b>'+esc(d.n)+'</b>'+(d.i===me()?' <span class="badge">This device</span>':'')+
+  '<div class="small muted"><span class="dot'+(d.on?' on':'')+'"></span> '+(d.on?'online':'offline')+(d.p?' · sharing paused':'')+'</div></div>'+
+  '<button class="btn sec sm" data-p="'+d.i+'">'+(d.p?'Resume':'Pause')+'</button>'+(d.i!==me()?'<button class="iconbtn" data-forget="'+d.i+'" aria-label="Remove">'+ic('trash')+'</button>':'')+'</div>').join('');
+ sheet('<div class="head"><h2 class="grow" style="margin:0">Devices</h2><button class="iconbtn" data-close>'+ic('x')+'</button></div><div class="list">'+rows+'</div>'+
+  '<p class="small muted" style="margin-top:12px">A paused device still receives, but sends nothing. Removing a device makes it type the passphrase again to come back.</p>',()=>{
+  document.querySelectorAll('[data-p]').forEach(b=>b.onclick=async()=>{const d=S.devices.find(x=>x.i===+b.dataset.p);await api('/device',{t:S.cfg.t,id:d.i,paused:d.p?0:1});closeSheet();poll();});
+  document.querySelectorAll('[data-forget]').forEach(b=>b.onclick=async()=>{if(!confirm('Remove '+devName(+b.dataset.forget)+' from the group?'))return;
+   await api('/forget',{t:S.cfg.t,id:b.dataset.forget});closeSheet();poll();});});};
+
+function installHtml(){const h=location.hostname||'clip.local';
+ return '<h2>Computers: the helper</h2><p class="small muted">Copy on a computer and it’s on your other computers a moment later, and here. Run once:</p>'+
+ '<p class="small" style="margin:10px 0 0"><b>Mac or Linux</b> (Terminal)</p><pre class="cmd mono">curl -fsSL http://'+esc(h)+'/i | sh</pre>'+
+ '<p class="small" style="margin:10px 0 0"><b>Windows</b> (PowerShell)</p><pre class="cmd mono">irm http://'+esc(h)+'/i.ps1 | iex</pre>'+
+ '<p class="small muted">The quick picker opens with <b>Win+Alt+V</b> on Windows. On a Mac or Linux, give <span class="mono">devkit_clip.py --pick</span> a keyboard shortcut in your system settings.</p>';}
+$('installCard1').innerHTML=installHtml();
+
+$('openSettings').onclick=()=>{const pct=Math.round(100*S.used/S.budget);
+ sheet('<div class="head"><h2 class="grow" style="margin:0">Settings</h2><button class="iconbtn" data-close>'+ic('x')+'</button></div>'+
+ '<label class="field"><span>Keep items that aren’t pinned for</span><select id="keep"><option value="1">1 hour</option><option value="24">1 day</option><option value="168">1 week</option><option value="0">Until the history fills up</option></select></label>'+
+ '<div class="small muted">Board storage: '+Math.round(S.used/1024)+' KB of '+Math.round(S.budget/1024)+' KB</div><div class="meter" style="margin:6px 0 14px"><div style="width:'+pct+'%"></div></div>'+
+ '<div class="card" style="margin:0 0 12px">'+installHtml()+'</div>'+
+ '<div class="card" style="margin:0 0 12px"><h2>iPhone: one tap from anywhere</h2><p class="small muted">In the Shortcuts app, make a shortcut with one action, <i>Open URLs</i>, set to <span class="mono">https://'+esc(location.host)+'/#paste</span>. Add it to the Home Screen, or to Back Tap (Settings, Accessibility, Touch). It opens this page ready to paste.</p></div>'+
+ '<div class="row" style="flex-wrap:wrap"><button class="btn sec" id="clearH">'+ic('trash','s')+'Clear the history</button><button class="btn danger" id="leave">Leave on this device</button><button class="btn danger" id="reset">Reset the group</button></div>'+
+ '<p class="small muted" style="margin-top:12px">'+ic('lock','s')+' Sealed with AES-256 and HMAC-SHA256 on your devices. The board sees sizes, times and which device sent what, never what it says.</p>',()=>{
+  $('keep').value=String(S.keep);$('keep').onchange=async()=>{await api('/settings',{t:S.cfg.t,keep:$('keep').value});poll();};
+  $('clearH').onclick=async()=>{if(confirm('Clear the history on every device? Pins stay.')){await api('/clear',{t:S.cfg.t});closeSheet();poll();}};
+  $('leave').onclick=async()=>{if(!confirm('Leave the group on this device? Its keys are deleted here.'))return;await api('/forget',{t:S.cfg.t,id:me()}).catch(()=>{});
+   store.del('cfg');closeSheet();startSetup();};
+  $('reset').onclick=async()=>{if(!confirm('Reset the group? Everything on the board is deleted, and every device must join again with a new passphrase.'))return;
+   await api('/reset',{t:S.cfg.t,sure:1});store.del('cfg');closeSheet();startSetup();};});};
+
+$('q').oninput=render;
+document.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.seg button').forEach(x=>x.classList.toggle('sel',x===b));S.filter=b.dataset.f;render();});
+
+// ── start ────────────────────────────────────────────────────────────────────────────────────
+(async()=>{
+ if(!isSecureContext||!window.crypto||!crypto.subtle){show('insecure');const u='https://'+(location.hostname||'clip.local')+'/';$('secLink').href=u;$('secLink').textContent=u;return;}
+ S.cfg=store.get('cfg',null);
+ if(S.cfg&&S.cfg.t)await begin();else startSetup();})();
+</script></body></html>
