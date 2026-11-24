@@ -8,6 +8,8 @@
 #include <esp_https_server.h>
 #include <esp_random.h>
 #include <esp_log.h>
+#include <esp_heap_caps.h>
+#include <atomic>
 #include <string>
 #include <vector>
 #include "clip.h"
@@ -19,6 +21,49 @@ static SemaphoreHandle_t lock;          // clip.h runs on two server tasks and l
 static char reply[REPLY_MAX];
 static String hosts;                    // filled into the installers: "clip.local 192.168.1.20"
 static httpd_handle_t plainServer = nullptr, secureServer = nullptr;
+
+// ── how the secure side is doing, for /health and the log ───────────────────
+// A refused phone shows nothing on the board's side unless we keep count: the TLS library's
+// own log is off (it is noisy on the "not private" warning).
+struct TlsStats {
+  std::atomic<uint32_t> opened{0}, open{0}, failed{0};
+  std::atomic<int32_t> lastErr{0}, lastTls{0};
+  std::atomic<uint32_t> freeAtFail{0}, largestAtFail{0}, freeAtOpen{0}, largestAtOpen{0};
+};
+static TlsStats tls;
+
+static void onHttpsEvent(void *, esp_event_base_t, int32_t id, void *data) {
+  const uint32_t f = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  const uint32_t l = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  if (id == HTTPS_SERVER_EVENT_ON_CONNECTED) {
+    tls.opened++; tls.open++;
+    tls.freeAtOpen = f; tls.largestAtOpen = l;
+  } else if (id == HTTPS_SERVER_EVENT_DISCONNECTED) {
+    if (tls.open) tls.open--;
+  } else if (id == HTTPS_SERVER_EVENT_ERROR && data) {
+    const esp_https_server_last_error_t *e = (const esp_https_server_last_error_t *)data;
+    tls.failed++;
+    tls.lastErr = e->last_error;
+    tls.lastTls = e->esp_tls_error_code;
+    tls.freeAtFail = f; tls.largestAtFail = l;
+  }
+}
+
+static std::string healthJson() {
+  char b[400];
+  snprintf(b, sizeof b,
+           "{\"ok\":true,\"free\":%u,\"minFree\":%u,\"largest\":%u,\"tls\":{\"open\":%u,\"opened\":%u,"
+           "\"failed\":%u,\"lastErr\":\"%s\",\"lastTls\":\"-0x%04X\",\"freeAtOpen\":%u,\"largestAtOpen\":%u,"
+           "\"freeAtFail\":%u,\"largestAtFail\":%u}}",
+           (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+           (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+           (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+           (unsigned)tls.open.load(), (unsigned)tls.opened.load(), (unsigned)tls.failed.load(),
+           tls.lastErr ? esp_err_to_name(tls.lastErr) : "", (unsigned)-tls.lastTls.load(),
+           (unsigned)tls.freeAtOpen.load(), (unsigned)tls.largestAtOpen.load(),
+           (unsigned)tls.freeAtFail.load(), (unsigned)tls.largestAtFail.load());
+  return b;
+}
 
 static uint32_t hwRand() { return esp_random(); }
 
@@ -234,6 +279,7 @@ static esp_err_t onRequest(httpd_req_t *r) {
     httpd_resp_set_hdr(r, "Cache-Control", "no-store");
     return httpd_resp_send(r, (const char *)CLIP_PAGE_GZ, CLIP_PAGE_GZ_LEN);
   }
+  if (path == "/health") return sendJson(r, healthJson());   // numbers only, nothing private
   if (path == "/favicon.ico") { httpd_resp_set_status(r, "204 No Content"); return httpd_resp_send(r, nullptr, 0); }
   if (path == "/devkit_clip.py.gz") { httpd_resp_set_type(r, "application/gzip"); return httpd_resp_send(r, (const char *)CLIP_PY_GZ, CLIP_PY_GZ_LEN); }
   if (path == "/clipcrypto.py.gz") { httpd_resp_set_type(r, "application/gzip"); return httpd_resp_send(r, (const char *)CRYPTO_PY_GZ, CRYPTO_PY_GZ_LEN); }
@@ -292,6 +338,7 @@ static void startServers() {
   // No session tickets: this core's TLS is built without server tickets, and asking for them
   // stops the whole https server from starting.
   sc.tls_handshake_timeout_ms = 5000;
+  esp_event_handler_register(ESP_HTTPS_SERVER_EVENT, ESP_EVENT_ANY_ID, onHttpsEvent, nullptr);
   const esp_err_t e = httpd_ssl_start(&secureServer, &sc);
   if (e == ESP_OK) {
     quietTls();                           // only once it runs, so a failure above is still logged
