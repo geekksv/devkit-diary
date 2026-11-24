@@ -289,7 +289,8 @@ static void startServers() {
   sc.httpd.lru_purge_enable = true;
   sc.httpd.uri_match_fn = httpd_uri_match_wildcard;
   sc.httpd.stack_size = 8192;
-  sc.session_tickets = true;
+  // No session tickets: this core's TLS is built without server tickets, and asking for them
+  // stops the whole https server from starting.
   sc.tls_handshake_timeout_ms = 5000;
   const esp_err_t e = httpd_ssl_start(&secureServer, &sc);
   if (e == ESP_OK) {
@@ -302,10 +303,8 @@ static void startServers() {
   // Plain http for the helpers.
   httpd_config_t pc = HTTPD_DEFAULT_CONFIG();
   pc.server_port = 80;
-  // This core's servers keep more than one internal socket near their control port; https sits
-  // at 32769, and plain http at 32770 stopped it starting. So http keeps well clear.
-  pc.ctrl_port = 32790;
-  pc.max_open_sockets = 5;                // with https's 3 and both servers' own, within lwIP's 16
+  pc.ctrl_port = 32770;                   // https has 32769
+  pc.max_open_sockets = 6;                // with https's 3 and each server's own 3: 15 of lwIP's 16
   pc.lru_purge_enable = true;
   pc.uri_match_fn = httpd_uri_match_wildcard;
   pc.stack_size = 8192;

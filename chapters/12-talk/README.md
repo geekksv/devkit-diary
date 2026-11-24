@@ -96,9 +96,9 @@ favicon), so a single phone could open several connections at once. The log fill
 - **Polling follows the room:** every 0.8 s while someone is talking or listening, every 2 s
   when the room is quiet, and every 5 s when the screen is off.
 - **The "speaking now" line** sends only the newest words, at most every 0.7 s.
-- **Reconnecting is cheap.** With session tickets, a phone whose connection was closed to make
-  room skips most of the handshake when it comes back. A handshake that stalls gives up after
-  5 seconds, rather than holding 37 KB.
+- **Stalled handshakes let go.** A handshake that stalls gives up after 5 seconds, rather than
+  holding 37 KB. (Session tickets would make reconnecting cheaper, but this ESP32 core is built
+  without them on the server side, and asking for them stops the https server from starting.)
 - **A quiet log.** A browser abandoning a handshake (`-0x7780`) is normal while a phone is on the
   "not private" warning, so those lines are hidden. Instead, a line every minute shows rooms,
   people, https requests and the largest free block of memory, which is what a new secure

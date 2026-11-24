@@ -40,7 +40,7 @@ const char *HOST = "talk";
 // Each open https connection holds ~37 KB: the TLS library in this ESP32 core has fixed 16 KB
 // buffers each way, which a sketch cannot change. Three fit with room to spare. Phones keep one
 // connection each (the page queues its requests), and a fourth phone closes the quietest
-// connection, which reconnects cheaply on its next poll thanks to session tickets.
+// connection, which reconnects on its next poll.
 const int SECURE_SOCKETS = 3;
 static std::atomic<uint32_t> secureRequests{0};   // counted on the https task, read on loop()
 
@@ -112,7 +112,8 @@ static void startSecure() {
   conf.httpd.lru_purge_enable = true;    // one more phone closes the quietest connection
   conf.httpd.uri_match_fn = httpd_uri_match_wildcard;
   conf.httpd.stack_size = 8192;
-  conf.session_tickets = true;           // a phone that reconnects skips most of the handshake
+  // No session tickets: this core's TLS is built without server tickets, and asking for them
+  // stops the whole https server from starting.
   conf.tls_handshake_timeout_ms = 5000;  // a stalled handshake must not hold 37 KB for long
   // A phone still on the "not private" warning, or a browser opening a spare connection and
   // dropping it, ends a handshake early. That is normal, and would otherwise fill the log.
