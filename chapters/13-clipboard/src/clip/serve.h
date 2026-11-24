@@ -278,21 +278,8 @@ static void quietTls() {
 static void startServers() {
   static const httpd_uri_t get = {"/*", HTTP_GET, onRequest, nullptr};
   static const httpd_uri_t post = {"/*", HTTP_POST, onRequest, nullptr};
-  // Plain http for the helpers.
-  httpd_config_t pc = HTTPD_DEFAULT_CONFIG();
-  pc.server_port = 80;
-  pc.ctrl_port = 32770;
-  pc.max_open_sockets = 6;
-  pc.lru_purge_enable = true;
-  pc.uri_match_fn = httpd_uri_match_wildcard;
-  pc.stack_size = 8192;
-  if (httpd_start(&plainServer, &pc) == ESP_OK) {
-    httpd_register_uri_handler(plainServer, &get);
-    httpd_register_uri_handler(plainServer, &post);
-  } else Serial.println("clip: http did not start");
-  // https for phones.
+  // https for phones, first, while every socket and the most memory are free.
   if (!cert::ready("clip", WiFi.localIP())) return;
-  quietTls();
   httpd_ssl_config_t sc = HTTPD_SSL_CONFIG_DEFAULT();
   sc.servercert = (const uint8_t *)cert::pem.c_str();
   sc.servercert_len = cert::pem.length() + 1;
@@ -304,10 +291,26 @@ static void startServers() {
   sc.httpd.stack_size = 8192;
   sc.session_tickets = true;
   sc.tls_handshake_timeout_ms = 5000;
-  if (httpd_ssl_start(&secureServer, &sc) == ESP_OK) {
+  const esp_err_t e = httpd_ssl_start(&secureServer, &sc);
+  if (e == ESP_OK) {
+    quietTls();                           // only once it runs, so a failure above is still logged
     httpd_register_uri_handler(secureServer, &get);
     httpd_register_uri_handler(secureServer, &post);
     MDNS.addService("https", "tcp", 443);
     Serial.printf("clip: https://%s.local for phones, http://%s.local for the computer helpers\n", "clip", "clip");
-  } else Serial.println("clip: https did not start");
+  } else Serial.printf("clip: https did not start (%s)\n", esp_err_to_name(e));
+  // Plain http for the helpers.
+  httpd_config_t pc = HTTPD_DEFAULT_CONFIG();
+  pc.server_port = 80;
+  // This core's servers keep more than one internal socket near their control port; https sits
+  // at 32769, and plain http at 32770 stopped it starting. So http keeps well clear.
+  pc.ctrl_port = 32790;
+  pc.max_open_sockets = 5;                // with https's 3 and both servers' own, within lwIP's 16
+  pc.lru_purge_enable = true;
+  pc.uri_match_fn = httpd_uri_match_wildcard;
+  pc.stack_size = 8192;
+  if (httpd_start(&plainServer, &pc) == ESP_OK) {
+    httpd_register_uri_handler(plainServer, &get);
+    httpd_register_uri_handler(plainServer, &post);
+  } else Serial.println("clip: http did not start");
 }

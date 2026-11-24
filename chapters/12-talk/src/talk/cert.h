@@ -99,9 +99,10 @@ inline bool ready(const char *host, IPAddress ip) {
   p.begin("cert", true);
   pem = p.getString("crt", "");
   key = p.getString("key", "");
-  const String forIp = p.getString("ip", "");
+  const String forIp = p.getString("ip", ""), forHost = p.getString("host", "");
   p.end();
-  if (pem.length() && key.length() && forIp == ip.toString()) {
+  // Every chapter shares this store, so the certificate must be for this name as well as this IP.
+  if (pem.length() && key.length() && forIp == ip.toString() && forHost == host) {
     Serial.println("cert: using the saved certificate");
     return true;
   }
@@ -113,6 +114,7 @@ inline bool ready(const char *host, IPAddress ip) {
   p.putString("crt", pem);
   p.putString("key", key);
   p.putString("ip", ip.toString());
+  p.putString("host", host);
   p.end();
   return true;
 }
