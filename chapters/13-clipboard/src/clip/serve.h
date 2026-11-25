@@ -32,6 +32,30 @@ struct TlsStats {
 };
 static TlsStats tls;
 
+// When each secure connection last did something, by socket number. A phone keeps its
+// connection between polls; a quiet one (a tab in the background, a browser's spare
+// connection) is closed so another device can have its memory.
+static const uint32_t SECURE_IDLE_MS = 4000;    // the page polls every 2 s on screen, 6 s off it
+static std::atomic<uint32_t> secureLastUse[64];
+static void noteSecureUse(int fd) { secureLastUse[fd & 63] = millis() | 1; }
+static esp_err_t onSecureOpen(httpd_handle_t, int fd) { noteSecureUse(fd); return ESP_OK; }
+
+// From loop(): closes secure connections that have been quiet for a while.
+static void closeQuietSecure() {
+  if (!secureServer) return;
+  size_t n = 8;
+  int fds[8];
+  if (httpd_get_client_list(secureServer, &n, fds) != ESP_OK) return;
+  const uint32_t now = millis();
+  for (size_t i = 0; i < n; i++) {
+    const uint32_t t = secureLastUse[fds[i] & 63];
+    if (t && now - t > SECURE_IDLE_MS) {
+      secureLastUse[fds[i] & 63] = 0;
+      httpd_sess_trigger_close(secureServer, fds[i]);
+    }
+  }
+}
+
 static void onHttpsEvent(void *, esp_event_base_t, int32_t id, void *data) {
   const uint32_t f = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
   const uint32_t l = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
@@ -271,6 +295,7 @@ static esp_err_t doBlob(httpd_req_t *r, const Args &a) {
 }
 
 static esp_err_t onRequest(httpd_req_t *r) {
+  if (r->handle == secureServer) noteSecureUse(httpd_req_to_sockfd(r));
   const char *q = strchr(r->uri, '?');
   const std::string path(r->uri, q ? q - r->uri : strlen(r->uri));
   if (path == "/") {                      // kept gzipped to fit in flash; every browser unpacks it
@@ -331,7 +356,11 @@ static void startServers() {
   sc.servercert_len = cert::pem.length() + 1;
   sc.prvtkey_pem = (const uint8_t *)cert::key.c_str();
   sc.prvtkey_len = cert::key.length() + 1;
-  sc.httpd.max_open_sockets = 3;          // ~37 KB each; see chapter 12
+  // Two, because that is what fits: measured on the board, two open sessions leave ~36 KB, and a
+  // third fails to set up (-0x7F00, out of memory) while the board still counted a free slot.
+  // At two, a third device closes the least recently used connection and gets in.
+  sc.httpd.max_open_sockets = 2;
+  sc.httpd.open_fn = onSecureOpen;        // called once the handshake is done
   sc.httpd.lru_purge_enable = true;
   sc.httpd.uri_match_fn = httpd_uri_match_wildcard;
   sc.httpd.stack_size = 8192;
@@ -351,7 +380,7 @@ static void startServers() {
   httpd_config_t pc = HTTPD_DEFAULT_CONFIG();
   pc.server_port = 80;
   pc.ctrl_port = 32770;                   // https has 32769
-  pc.max_open_sockets = 6;                // with https's 3 and each server's own 3: 15 of lwIP's 16
+  pc.max_open_sockets = 6;                // with https's 2 and each server's own 3: 14 of lwIP's 16
   pc.lru_purge_enable = true;
   pc.uri_match_fn = httpd_uri_match_wildcard;
   pc.stack_size = 8192;

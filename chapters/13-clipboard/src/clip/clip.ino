@@ -75,6 +75,7 @@ void loop() {
     tick(now, unixTime());
     xSemaphoreGive(lock);
     saveIndexIfDirty(now);
+    closeQuietSecure();
   }
   // Hold BOOT for 5 seconds: a new group, for when the passphrase is forgotten.
   if (digitalRead(BOOT_BUTTON) == LOW) {

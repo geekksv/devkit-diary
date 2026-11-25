@@ -165,8 +165,12 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 // ── the board: one request at a time (lesson from chapter 12) ─────────────────────────────────
 let chain=Promise.resolve();
 function queued(fn){const p=chain.then(fn,fn);chain=p.catch(()=>{});return p;}
-async function req(url,opt,as){const c=new AbortController();const t=setTimeout(()=>c.abort(),30000);
- try{const r=await fetch(url,Object.assign({signal:c.signal},opt||{}));return as==='bytes'?new Uint8Array(await r.arrayBuffer()):await r.json();}finally{clearTimeout(t)}}
+// The board holds two secure connections and closes quiet ones, so a request can meet a connection
+// that just closed. A read is simply tried once more.
+async function req(url,opt,as,again){const c=new AbortController();const t=setTimeout(()=>c.abort(),30000);
+ try{const r=await fetch(url,Object.assign({signal:c.signal},opt||{}));return as==='bytes'?new Uint8Array(await r.arrayBuffer()):await r.json();}
+ catch(e){if(!again&&!(opt&&opt.method==='POST')&&e.name!=='AbortError'){clearTimeout(t);await sleep(400);return req(url,opt,as,true);}throw e;}
+ finally{clearTimeout(t)}}
 const api=(path,data)=>queued(()=>req(path,{method:'POST',body:new URLSearchParams(data||{})}));
 const getJ=url=>queued(()=>req(url));
 const getBytes=url=>queued(()=>req(url,null,'bytes'));
