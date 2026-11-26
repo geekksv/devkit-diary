@@ -76,7 +76,8 @@ static void noteError(const char *e) {
 // Joins a network and waits for an address. The board's own setup network, if it is up, stays
 // up while it tries (AP + STA).
 static bool join(const char *ssid, const char *pass, uint32_t timeoutMs) {
-  WiFi.mode(mode == PORTAL ? WIFI_AP_STA : WIFI_STA);
+  // A network the sketch made before joining (chapter 14's NoAds) stays up too.
+  WiFi.mode((mode == PORTAL || (WiFi.getMode() & WIFI_MODE_AP)) ? WIFI_AP_STA : WIFI_STA);
   WiFi.setHostname(cfg.host);
   WiFi.begin(ssid, pass);
   const uint32_t t0 = millis();

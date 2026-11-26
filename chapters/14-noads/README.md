@@ -1,9 +1,9 @@
 # 14 · No ads on this WiFi
 
 > **Needs:** one ESP32 DevKit V1 on your home WiFi. Nothing installed on your phones or laptops.
-> **Status:** run on the board itself, on a home WiFi. It answered 3,000 lookups from a laptop at
-> 103 a second (median 43 ms), blocked the ad servers, and blocked none of 2,099 lookups of
-> everyday sites. Not yet tried: phones joined to NoAds for a day of real use.
+> **Status:** run on the board itself, on a home WiFi, with an Android phone browsing through
+> NoAds. It answered 3,000 lookups from a laptop at 103 a second (median 43 ms), blocked the ad
+> servers, and blocked none of 2,099 lookups of everyday sites.
 
 An ad blocker for every phone and laptop, with no app and no settings on them. The board joins
 your home WiFi and makes a second network, **NoAds**. Anything that joins NoAds gets the internet
@@ -102,6 +102,11 @@ Getting this right on the board took several attempts, and each is worth knowing
 - **Changing a file's start copies the whole file:** in flash, it needs room for two copies. So
   the list's header went to the **end**, written last. A list cut short by a power cut never
   ends in a valid one, so it's never mistaken for whole.
+- **The order the two networks are made in matters.** Joining the home WiFi first and then making
+  NoAds gave a board that phones could reach but nothing passed through, not even to the router.
+  The core's WiFiExtender example makes the hotspot first, then joins, and switches routing on
+  each time the home connection gets an address. Copying that order fixed it, found by flashing
+  the example on its own as a test.
 - **A secure download wants ~50 KB.** With NoAds routing, DNS and the dashboard all running, the
   board had 100 KB free, but once the download's connection was open, its largest free block
   was **6.6 KB**. Downloads broke off part way. So updates run in a restart of their own: home
@@ -161,8 +166,12 @@ one. The web flasher sets it.
 - **Three updates in a row** with no restart.
 - **Load:** 3,000 lookups at 103 a second, median 43 ms. 0 of 2,099 everyday lookups was blocked.
 
+- **A phone on NoAds:** an Android phone browses normally through the board, with ads from the ad
+  networks gone. Ads a site serves from its own servers still show, as expected for DNS
+  blocking.
+
 **Not yet confirmed:**
-- phones on NoAds for a day of real use, and real speeds through it;
+- a full day of real use, and measured speeds through NoAds;
 - router mode in a real router.
 
 ## Sources

@@ -62,7 +62,8 @@ static NameList allowList, blockList;
 // ── state ────────────────────────────────────────────────────────────────────
 static Stats stats;
 static Cache *cache;                     // on the heap: ~25 KB, too much for static memory
-static uint32_t pausedUntil = 0;         // millis(); 0: not paused
+static uint32_t pausedUntil = 0;
+static volatile bool routing = false;    // NAPT on: NoAds devices reach the internet through the board         // millis(); 0: not paused
 static volatile bool updating = false;
 static char updateNote[96] = "";
 static char failDetail[160] = "";        // why the last download failed, for the dashboard
@@ -491,6 +492,7 @@ static void stateJson(Out &o) {
   o.str(apPass);
   o.add(",\"apIp\":\"%s\",\"homeIp\":\"%s\",\"home\":", WiFi.softAPIP().toString().c_str(), WiFi.localIP().toString().c_str());
   o.str(WiFi.SSID().c_str());
+  o.add(",\"routing\":%s", routing ? "true" : "false");
   o.add(",\"devices\":%d,\"dns\":[\"%s\",\"%s\"],\"allow\":[", WiFi.softAPgetStationNum(), upstream[0].toString().c_str(),
         upstream[1].toString().c_str());
   for (int i = 0; i < allowList.n; i++) { if (i) o.add(","); o.str(allowList.names[i]); }
@@ -571,7 +573,7 @@ static void handle() {
       xSemaphoreGive(lock);
       sendReply(o);
       delay(300);
-      WiFi.softAP(apName, apPass, WiFi.channel(), 0, 8);
+      ESP.restart();                           // NoAds comes back with the new name or password
       return;
     }
   } else if (path == "/update") {
@@ -587,15 +589,28 @@ done:
 }
 
 // ── the networks ─────────────────────────────────────────────────────────────
+
+// NoAds is made the way the ESP32 core's WiFiExtender example makes it: the network first, then
+// the home WiFi joined, and routing (NAPT) switched on each time the home connection gets an
+// address. Made the other way round (home WiFi first, then NoAds) the board passed nothing on:
+// phones could reach the board itself but not the router (tested 2026-11-26).
 static void startNoAds() {
-  WiFi.mode(WIFI_AP_STA);
+  Network.onEvent([](arduino_event_id_t e, arduino_event_info_t) {
+    if (e == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
+      routing = WiFi.AP.enableNAPT(true);
+      Serial.printf("noads: routing %s\n", routing ? "on" : "did not start");
+    } else if (e == ARDUINO_EVENT_WIFI_STA_LOST_IP || e == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
+      if (routing) WiFi.AP.enableNAPT(false);
+      routing = false;
+    }
+  });
+  WiFi.AP.begin();
   // The board is NoAds' gateway and its DNS server: phones get both from it automatically.
-  WiFi.softAPConfig(IPAddress(192, 168, 4, 1), IPAddress(192, 168, 4, 1), IPAddress(255, 255, 255, 0),
-                    IPAddress(192, 168, 4, 2), IPAddress(192, 168, 4, 1));
-  if (!WiFi.softAP(apName, apPass, WiFi.channel(), 0, 8)) Serial.println("noads: NoAds network did not start");
-  else if (!WiFi.AP.enableNAPT(true)) Serial.println("noads: routing (NAPT) did not start");
-  else Serial.printf("noads: network \"%s\" is up (password %s); devices on it get the internet through the board\n",
-                     apName, apPass);
+  WiFi.AP.config(IPAddress(192, 168, 4, 1), IPAddress(192, 168, 4, 1), IPAddress(255, 255, 255, 0),
+                 IPAddress(192, 168, 4, 2), IPAddress(192, 168, 4, 1));
+  if (!WiFi.AP.create(apName, apPass, 1, 0, 8)) { Serial.println("noads: NoAds network did not start"); return; }
+  WiFi.AP.waitStatusBits(ESP_NETIF_STARTED_BIT, 1000);
+  Serial.printf("noads: network \"%s\" is up\n", apName);
 }
 
 void setup() {
@@ -609,17 +624,19 @@ void setup() {
   removeLeftovers();
   loadSettings();
 
+  // Update mode: asked for before the restart, or there is no list at all yet. With no list, one
+  // try at start; if that fails, loop() asks again every 10 minutes (never a loop of restarts).
+  openList();
+  const bool wanted = prefs.getBool("update", false);
+  const bool updateMode = wanted || (!list.ok && !prefs.getBool("noRetry", false));
+  if (!updateMode) startNoAds();             // before the home WiFi: see startNoAds()
+
   // false: the board's own setup network is only for choosing your WiFi; NoAds needs it to work.
   const wifisetup::Config cfg = {HOST, "devkit-noads", "devkit-noads", "14", false};
   if (!wifisetup::begin(cfg, web)) return;   // the setup page runs from loop() until WiFi is chosen
   configTime(0, 0, "pool.ntp.org", "time.google.com");
 
-  // Update mode: asked for before the restart, or there is no list at all yet.
-  openList();
-  const bool wanted = prefs.getBool("update", false);
-  // With no list, one try at start; if that fails, loop() asks again every 10 minutes (never a
-  // loop of restarts).
-  if (wanted || (!list.ok && !prefs.getBool("noRetry", false))) {
+  if (updateMode) {
     prefs.putBool("update", false);
     prefs.putBool("noRetry", true);
     for (int i = 0; i < 50 && time(nullptr) < 1700000000; i++) delay(100);   // the clock, for "built"
@@ -636,7 +653,6 @@ void setup() {
   cache = new Cache();
   cache->clear();
   flights = new Flight[IN_FLIGHT]();
-  startNoAds();
 
   web.on("/", [] {
     web.sendHeader("Cache-Control", "no-store");
