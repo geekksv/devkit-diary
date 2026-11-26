@@ -145,6 +145,18 @@
       "host": "clip",
       "partition": "default",
       "after": "On each computer run: curl -fsSL http://clip.local/i | sh  (Windows: irm http://clip.local/i.ps1 | iex). On phones open https://clip.local"
+    },
+    {
+      "id": "14-noads",
+      "title": "No ads on this WiFi",
+      "chapter": "chapters/14-noads",
+      "sketch": "chapters/14-noads/src/noads",
+      "description": "An ad blocker for every phone and laptop: join the board's NoAds WiFi and ~180,000 ad and tracker addresses go nowhere. Dashboard, pause, your own lists.",
+      "wifi_setup": true,
+      "host": "noads",
+      "wifi": "your home WiFi, then NoAds",
+      "partition": "no_ota",
+      "after": "Open http://noads.local for the NoAds password, then join NoAds on your phones"
     }
   ],
   "devices": [
