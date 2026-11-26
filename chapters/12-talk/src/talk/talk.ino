@@ -37,15 +37,55 @@
 #include "serve.h"
 
 const char *HOST = "talk";
-// Each open https connection holds ~37 KB: the TLS library in this ESP32 core has fixed 16 KB
-// buffers each way, which a sketch cannot change. Three fit with room to spare. Phones keep one
-// connection each (the page queues its requests), and a fourth phone closes the quietest
-// connection, which reconnects on its next poll.
-const int SECURE_SOCKETS = 3;
+// Each open https connection holds ~70 KB (measured in chapter 13 with /health): the TLS library
+// in this ESP32 core has fixed 16 KB buffers each way, which a sketch cannot change. Two fit; a
+// third failed to set up (-0x7F00) while the server still counted a free slot. At two, a third
+// phone closes the least recently used connection and gets in. Connections quiet for a few
+// seconds close too, so a phone in someone's pocket does not hold memory.
+const int SECURE_SOCKETS = 2;
+const uint32_t SECURE_IDLE_MS = 4000;     // the page polls every 0.8-2 s on screen
 static std::atomic<uint32_t> secureRequests{0};   // counted on the https task, read on loop()
 
 WebServer web(80);
 static httpd_handle_t secure = nullptr;
+
+// When each secure connection last did something, by socket number.
+static std::atomic<uint32_t> secureLastUse[64];
+static void noteSecureUse(int fd) { secureLastUse[fd & 63] = millis() | 1; }
+static esp_err_t onSecureOpen(httpd_handle_t, int fd) { noteSecureUse(fd); return ESP_OK; }
+static void closeQuietSecure() {
+  if (!secure) return;
+  size_t n = 8;
+  int fds[8];
+  if (httpd_get_client_list(secure, &n, fds) != ESP_OK) return;
+  const uint32_t now = millis();
+  for (size_t i = 0; i < n; i++) {
+    const uint32_t t = secureLastUse[fds[i] & 63];
+    if (t && now - t > SECURE_IDLE_MS) { secureLastUse[fds[i] & 63] = 0; httpd_sess_trigger_close(secure, fds[i]); }
+  }
+}
+
+// Refused secure connections, for /health: noMemory must stay 0.
+static std::atomic<uint32_t> tlsOpened{0}, tlsNoMemory{0}, tlsAbandoned{0};
+static void onHttpsEvent(void *, esp_event_base_t, int32_t id, void *data) {
+  if (id == HTTPS_SERVER_EVENT_ON_CONNECTED) tlsOpened++;
+  else if (id == HTTPS_SERVER_EVENT_ERROR && data) {
+    const esp_https_server_last_error_t *e = (const esp_https_server_last_error_t *)data;
+    const int c = e->esp_tls_error_code < 0 ? -e->esp_tls_error_code : e->esp_tls_error_code;
+    if (c == 0x7F00 || e->last_error == ESP_ERR_MBEDTLS_SSL_SETUP_FAILED || e->last_error == ESP_ERR_NO_MEM) tlsNoMemory++;
+    else tlsAbandoned++;
+  }
+}
+static int healthJson(char *b, size_t n) {
+  return snprintf(b, n,
+                  "{\"ok\":true,\"up\":%lu,\"boot\":%d,\"free\":%u,\"minFree\":%u,\"largest\":%u,"
+                  "\"tls\":{\"opened\":%u,\"noMemory\":%u,\"abandoned\":%u}}",
+                  (unsigned long)(millis() / 1000), (int)esp_reset_reason(),
+                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+                  (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+                  (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+                  (unsigned)tlsOpened.load(), (unsigned)tlsNoMemory.load(), (unsigned)tlsAbandoned.load());
+}
 // ── http, port 80 (Arduino's WebServer, on loop()) ──────────────────────────
 
 static const char *webArg(const char *key) {
@@ -57,21 +97,27 @@ static const char *webArg(const char *key) {
 }
 
 static void webApi() {
-  const std::string s = answer(web.uri().c_str(), webArg);
   web.sendHeader("Cache-Control", "no-store");
-  web.send(200, "application/json", s.c_str());
+  if (web.uri() == "/health") {
+    healthJson(replies[0], REPLY_MAX);
+    web.send_P(200, "application/json", replies[0], strlen(replies[0]));
+    return;
+  }
+  const size_t n = answer(0, web.uri().c_str(), webArg);
+  web.send_P(200, "application/json", replies[0], n);
 }
 
 // ── https, port 443 (ESP-IDF's server, its own task) ────────────────────────
 
-static esp_err_t sendJson(httpd_req_t *r, const std::string &s) {
+static esp_err_t sendJson(httpd_req_t *r, const char *s, size_t n) {
   httpd_resp_set_type(r, "application/json");
   httpd_resp_set_hdr(r, "Cache-Control", "no-store");
-  return httpd_resp_send(r, s.data(), s.size());
+  return httpd_resp_send(r, s, n);
 }
 
 static esp_err_t sAny(httpd_req_t *r) {
   secureRequests++;
+  noteSecureUse(httpd_req_to_sockfd(r));
   const char *q = strchr(r->uri, '?');
   const std::string path(r->uri, q ? q - r->uri : strlen(r->uri));
   if (path == "/favicon.ico") {            // browsers ask; answering costs nothing, a 404 page more
@@ -98,7 +144,9 @@ static esp_err_t sAny(httpd_req_t *r) {
     }
     a.parse(body.data(), n);
   }
-  return sendJson(r, answer(path.c_str(), [&](const char *k) { return a.get(k); }));
+  if (path == "/health") return sendJson(r, replies[1], healthJson(replies[1], REPLY_MAX));
+  const size_t len = answer(1, path.c_str(), [&](const char *k) { return a.get(k); });
+  return sendJson(r, replies[1], len);
 }
 
 static void startSecure() {
@@ -109,6 +157,7 @@ static void startSecure() {
   conf.prvtkey_pem = (const uint8_t *)cert::key.c_str();
   conf.prvtkey_len = cert::key.length() + 1;
   conf.httpd.max_open_sockets = SECURE_SOCKETS;
+  conf.httpd.open_fn = onSecureOpen;     // called once the handshake is done
   conf.httpd.lru_purge_enable = true;    // one more phone closes the quietest connection
   conf.httpd.uri_match_fn = httpd_uri_match_wildcard;
   conf.httpd.stack_size = 8192;
@@ -121,6 +170,7 @@ static void startSecure() {
   esp_log_level_set("esp-tls", ESP_LOG_NONE);
   esp_log_level_set("esp_https_server", ESP_LOG_NONE);
   esp_log_level_set("httpd", ESP_LOG_NONE);
+  esp_event_handler_register(ESP_HTTPS_SERVER_EVENT, ESP_EVENT_ANY_ID, onHttpsEvent, nullptr);
   const esp_err_t e = httpd_ssl_start(&secure, &conf);
   if (e != ESP_OK) { Serial.printf("talk: https did not start (%s)\n", esp_err_to_name(e)); return; }
   static const httpd_uri_t get = {"/*", HTTP_GET, sAny, nullptr};
@@ -145,7 +195,7 @@ void setup() {
     web.sendHeader("Cache-Control", "no-store");
     web.send_P(200, "text/html; charset=utf-8", TALK_PAGE);
   });
-  for (const char *p : {"/rooms", "/create", "/join", "/state", "/say", "/live", "/tr", "/me", "/leave", "/clear"})
+  for (const char *p : {"/rooms", "/create", "/join", "/state", "/say", "/live", "/tr", "/me", "/leave", "/clear", "/health"})
     web.on(p, webApi);
   web.on("/favicon.ico", [] { web.send(204); });
   web.onNotFound([] { web.send(404, "text/plain", "not here"); });
@@ -165,6 +215,7 @@ void loop() {
     xSemaphoreTake(lock, portMAX_DELAY);
     tick(now);
     xSemaphoreGive(lock);
+    closeQuietSecure();
   }
   if (now - lastLog >= 60000) {
     lastLog = now;

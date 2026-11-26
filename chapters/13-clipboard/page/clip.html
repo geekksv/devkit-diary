@@ -219,7 +219,9 @@ async function begin(){
  if(location.hash==='#paste')toast('Tap Paste here to send this phone’s clipboard',4000);}
 
 // ── keeping in step ──────────────────────────────────────────────────────────────────────────
-function pace(){return document.hidden?6000:2000;}
+// Each poll over a fresh secure connection costs the board a handshake, so a page nobody is
+// looking at asks rarely, and comes back to the latest at once when it is shown (visibilitychange).
+function pace(){return document.hidden?20000:3000;}
 async function poll(){clearTimeout(S.timer);if(!S.cfg)return;if(S.polling){S.soon=true;return;}S.polling=true;let again=pace();
  try{const j=await getJ('/state?'+new URLSearchParams({t:S.cfg.t,v:S.v,epoch:S.epoch}));
   if(!j.ok){if(j.err==='notin'||j.err==='nogroup'){store.del('cfg');S.polling=false;startSetup('This device is no longer in the group (it was removed, or the group was reset). Join again.');return;}throw 0;}

@@ -95,10 +95,10 @@ void loop() {
     Serial.printf("clip: %u items, %lu KB sealed, %u devices online, %lu bytes free (largest block %lu)\n", itemCount(),
                   (unsigned long)(usedBytes / 1024), onlineCount(), (unsigned long)ESP.getFreeHeap(),
                   (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
-    if (tls.failed)
-      Serial.printf("clip: secure: %u open, %u refused, last %s (TLS -0x%04X) with %u free, largest block %u\n",
-                    (unsigned)tls.open.load(), (unsigned)tls.failed.load(), esp_err_to_name(tls.lastErr),
-                    (unsigned)-tls.lastTls.load(), (unsigned)tls.freeAtFail.load(), (unsigned)tls.largestAtFail.load());
+    if (tls.noMemory)
+      Serial.printf("clip: secure: %u open, %u refused for want of memory (%u free, largest block %u at the last)\n",
+                    (unsigned)tls.open.load(), (unsigned)tls.noMemory.load(), (unsigned)tls.freeAtFail.load(),
+                    (unsigned)tls.largestAtFail.load());
   }
   delay(5);
 }

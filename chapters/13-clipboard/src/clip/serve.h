@@ -18,7 +18,9 @@
 #include "cert.h"
 
 static SemaphoreHandle_t lock;          // clip.h runs on two server tasks and loop()
-static char reply[REPLY_MAX];
+// One reply buffer per server task, so an answer is built and sent without borrowing up to
+// 12 KB from a heap that secure connections keep nearly full.
+static char replies[2][REPLY_MAX];
 static String hosts;                    // filled into the installers: "clip.local 192.168.1.20"
 static httpd_handle_t plainServer = nullptr, secureServer = nullptr;
 
@@ -27,6 +29,8 @@ static httpd_handle_t plainServer = nullptr, secureServer = nullptr;
 // own log is off (it is noisy on the "not private" warning).
 struct TlsStats {
   std::atomic<uint32_t> opened{0}, open{0}, failed{0};
+  std::atomic<uint32_t> noMemory{0};      // refused for want of memory: the one that must stay 0
+  std::atomic<uint32_t> abandoned{0};     // the browser ended the handshake (warning page, spare connection)
   std::atomic<int32_t> lastErr{0}, lastTls{0};
   std::atomic<uint32_t> freeAtFail{0}, largestAtFail{0}, freeAtOpen{0}, largestAtOpen{0};
 };
@@ -69,22 +73,39 @@ static void onHttpsEvent(void *, esp_event_base_t, int32_t id, void *data) {
     tls.failed++;
     tls.lastErr = e->last_error;
     tls.lastTls = e->esp_tls_error_code;
+    const int c = e->esp_tls_error_code < 0 ? -e->esp_tls_error_code : e->esp_tls_error_code;
+    if (c == 0x7F00 || e->last_error == ESP_ERR_MBEDTLS_SSL_SETUP_FAILED || e->last_error == ESP_ERR_NO_MEM) tls.noMemory++;
+    else if (c == 0x7780 || c == 0x7880 || c == 0x0050 || c == 0x004C) tls.abandoned++;
     tls.freeAtFail = f; tls.largestAtFail = l;
   }
 }
 
+static const char *resetName() {
+  switch (esp_reset_reason()) {
+    case ESP_RST_POWERON: return "power on";
+    case ESP_RST_SW: return "restart";
+    case ESP_RST_PANIC: return "crash";
+    case ESP_RST_INT_WDT: case ESP_RST_TASK_WDT: case ESP_RST_WDT: return "watchdog";
+    case ESP_RST_BROWNOUT: return "brownout";
+    case ESP_RST_EXT: return "reset button";
+    default: return "other";
+  }
+}
+
 static std::string healthJson() {
-  char b[400];
+  char b[560];
+  const int code = tls.lastTls < 0 ? -tls.lastTls.load() : tls.lastTls.load();
   snprintf(b, sizeof b,
-           "{\"ok\":true,\"free\":%u,\"minFree\":%u,\"largest\":%u,\"tls\":{\"open\":%u,\"opened\":%u,"
-           "\"failed\":%u,\"lastErr\":\"%s\",\"lastTls\":\"-0x%04X\",\"freeAtOpen\":%u,\"largestAtOpen\":%u,"
-           "\"freeAtFail\":%u,\"largestAtFail\":%u}}",
+           "{\"ok\":true,\"up\":%lu,\"boot\":\"%s\",\"free\":%u,\"minFree\":%u,\"largest\":%u,"
+           "\"tls\":{\"open\":%u,\"opened\":%u,\"failed\":%u,\"noMemory\":%u,\"abandoned\":%u,"
+           "\"lastErr\":\"%s\",\"lastTls\":\"-0x%04X\",\"freeAtFail\":%u,\"largestAtFail\":%u}}",
+           (unsigned long)(millis() / 1000), resetName(),
            (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
            (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
            (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
            (unsigned)tls.open.load(), (unsigned)tls.opened.load(), (unsigned)tls.failed.load(),
-           tls.lastErr ? esp_err_to_name(tls.lastErr) : "", (unsigned)-tls.lastTls.load(),
-           (unsigned)tls.freeAtOpen.load(), (unsigned)tls.largestAtOpen.load(),
+           (unsigned)tls.noMemory.load(), (unsigned)tls.abandoned.load(),
+           tls.lastErr ? esp_err_to_name(tls.lastErr) : "", (unsigned)code,
            (unsigned)tls.freeAtFail.load(), (unsigned)tls.largestAtFail.load());
   return b;
 }
@@ -329,13 +350,15 @@ static esp_err_t onRequest(httpd_req_t *r) {
     }
     a.parse(body.data(), n);
   }
+  char *reply = replies[r->handle == secureServer ? 1 : 0];
   xSemaphoreTake(lock, portMAX_DELAY);
-  Out o = {reply, sizeof reply, 0};
+  Out o = {reply, REPLY_MAX, 0};
   reply[0] = 0;
   route(path.c_str(), [&](const char *k) { return a.get(k); }, millis(), unixTime(), o);
-  std::string s(reply, o.n);
   xSemaphoreGive(lock);
-  return sendJson(r, s);
+  httpd_resp_set_type(r, "application/json");
+  httpd_resp_set_hdr(r, "Cache-Control", "no-store");
+  return httpd_resp_send(r, reply, o.n);
 }
 
 static void quietTls() {

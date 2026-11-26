@@ -346,17 +346,20 @@ function secureUrl(){return 'https://'+(location.hostname||'talk.local')+'/'+loc
 
 // ── talking to the board ─────────────────────────────────────────────────────
 // Every request to the board goes through one queue, so a phone holds one connection to it, not
-// six. A secure connection costs the board ~37 KB, and it can only keep about three.
+// six. A secure connection costs the board ~70 KB, and it keeps two, closing quiet ones; so a
+// request can meet a connection that just closed, and a read is simply tried once more.
 let chain=Promise.resolve();
 function queued(fn){const p=chain.then(fn,fn);chain=p.catch(()=>{});return p;}
-async function boardFetch(url,opt){const c=new AbortController();const t=setTimeout(()=>c.abort(),10000);
- try{const r=await fetch(url,Object.assign({signal:c.signal},opt||{}));return await r.json();}finally{clearTimeout(t)}}
+async function boardFetch(url,opt,again){const c=new AbortController();const t=setTimeout(()=>c.abort(),10000);
+ try{const r=await fetch(url,Object.assign({signal:c.signal},opt||{}));return await r.json();}
+ catch(e){if(!again&&!(opt&&opt.method==='POST')&&e.name!=='AbortError'){clearTimeout(t);await sleep(400);return boardFetch(url,opt,true);}throw e;}
+ finally{clearTimeout(t)}}
 function api(path,data){return queued(()=>boardFetch(path,{method:'POST',body:new URLSearchParams(data||{})}));}
 function getJ(url){return queued(()=>boardFetch(url));}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 // How soon to ask again: quickly while someone is talking, slowly in a quiet room, rarely when
 // the screen is off.
-function pace(active){return document.hidden?5000:active?800:2000;}
+function pace(active){return document.hidden?15000:active?800:2000;}   // hidden: the board's secure connections are few
 
 // ── home ─────────────────────────────────────────────────────────────────────
 fillLangs($('lang'),store.get('lang','en-IN'));$('name').value=store.get('name','');

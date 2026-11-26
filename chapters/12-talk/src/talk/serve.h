@@ -11,20 +11,23 @@
 #include "talk.h"
 
 static SemaphoreHandle_t lock;           // route() and tick() run on two server tasks and loop()
-static char reply[REPLY_MAX];            // stateJson() keeps under this and sends "more"
+// One reply buffer per server (0: http on loop(), 1: https task). stateJson() keeps under it and
+// sends "more". A reply is built and sent from here, never copied into a heap that the secure
+// connections keep nearly full.
+static char replies[2][REPLY_MAX];
 
 static uint32_t hwRand() { return esp_random(); }
 
-// Runs one request through talk.h. Returns the reply as its own copy, so the lock is not held
-// while it goes out over a (slow, secure) connection.
-template <class G> static std::string answer(const char *path, G arg) {
+// Runs one request through talk.h into that server's own buffer, and returns its length. The
+// lock covers only the room, not the (slow, secure) sending.
+template <class G> static size_t answer(int server, const char *path, G arg) {
+  char *reply = replies[server];
   xSemaphoreTake(lock, portMAX_DELAY);
-  Out o = {reply, sizeof reply, 0};
+  Out o = {reply, REPLY_MAX, 0};
   reply[0] = 0;
   route(path, arg, millis(), o);
-  std::string s(reply, o.n);
   xSemaphoreGive(lock);
-  return s;
+  return o.n;
 }
 
 
