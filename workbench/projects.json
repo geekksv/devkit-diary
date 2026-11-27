@@ -169,6 +169,18 @@
       "host": "react",
       "partition": "default",
       "after": "Open http://react.local, or just press BOOT on the board"
+    },
+    {
+      "id": "21-pad",
+      "title": "Phone Pad",
+      "chapter": "chapters/21-pad",
+      "sketch": "chapters/21-pad/src/pad",
+      "description": "Turn your phone into a build-your-own game controller for any PC. The board is a Bluetooth keyboard+mouse+gamepad; design your layout, map keys, and play. No driver, no app.",
+      "wifi": "your home WiFi",
+      "wifi_setup": true,
+      "host": "pad",
+      "partition": "no_ota",
+      "after": "Pair \"Phone Pad\" in the PC's Bluetooth settings, then open http://pad.local on your phone"
     }
   ],
   "devices": [
