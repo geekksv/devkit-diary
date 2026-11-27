@@ -157,6 +157,18 @@
       "wifi": "your home WiFi, then NoAds",
       "partition": "no_ota",
       "after": "Open http://noads.local for the NoAds password, then join NoAds on your phones"
+    },
+    {
+      "id": "15-reaction",
+      "title": "Reaction",
+      "chapter": "chapters/15-reaction",
+      "sketch": "chapters/15-reaction/src/reaction",
+      "description": "Press BOOT when the blue LED lights. The board times you to the millisecond and keeps a top ten.",
+      "wifi": "devkit-react",
+      "wifi_setup": true,
+      "host": "react",
+      "partition": "default",
+      "after": "Open http://react.local, or just press BOOT on the board"
     }
   ],
   "devices": [
