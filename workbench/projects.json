@@ -159,31 +159,37 @@
       "after": "Open http://noads.local for the NoAds password, then join NoAds on your phones"
     },
     {
-      "id": "15-reaction",
+      "id": "15-air",
+      "title": "AirController",
+      "chapter": "chapters/15-air",
+      "sketch": "chapters/15-air/src/pad",
+      "description": "Turn your phone into a build-your-own game controller for any PC. The board is a Bluetooth keyboard+mouse+gamepad; design your layout, map keys, and play. No driver, no app.",
+      "wifi": "your home WiFi",
+      "wifi_setup": true,
+      "host": "air",
+      "partition": "no_ota",
+      "after": "Pair \"AirController\" in the PC's Bluetooth settings, then open http://air.local on your phone"
+    },
+    {
+      "id": "21-reaction",
       "title": "Reaction",
-      "chapter": "chapters/15-reaction",
-      "sketch": "chapters/15-reaction/src/reaction",
+      "chapter": "chapters/21-reaction",
+      "sketch": "chapters/21-reaction/src/reaction",
       "description": "Press BOOT when the blue LED lights. The board times you to the millisecond and keeps a top ten.",
       "wifi": "devkit-react",
       "wifi_setup": true,
       "host": "react",
       "partition": "default",
       "after": "Open http://react.local, or just press BOOT on the board"
-    },
-    {
-      "id": "21-pad",
-      "title": "Phone Pad",
-      "chapter": "chapters/21-pad",
-      "sketch": "chapters/21-pad/src/pad",
-      "description": "Turn your phone into a build-your-own game controller for any PC. The board is a Bluetooth keyboard+mouse+gamepad; design your layout, map keys, and play. No driver, no app.",
-      "wifi": "your home WiFi",
-      "wifi_setup": true,
-      "host": "pad",
-      "partition": "no_ota",
-      "after": "Pair \"Phone Pad\" in the PC's Bluetooth settings, then open http://pad.local on your phone"
     }
   ],
   "devices": [
-    { "id": "esp32", "name": "ESP32 (DevKit V1)", "fqbn": "esp32:esp32:esp32", "chip": "ESP32", "tested": true }
+    {
+      "id": "esp32",
+      "name": "ESP32 (DevKit V1)",
+      "fqbn": "esp32:esp32:esp32",
+      "chip": "ESP32",
+      "tested": true
+    }
   ]
 }

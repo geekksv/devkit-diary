@@ -5,7 +5,7 @@
 //
 //   your finger ── WiFi (WebSocket) ──► ESP32 ── Bluetooth HID ──► PC
 //
-// Pair it once: on the PC, Bluetooth settings → add device → "Phone Pad". Then open the page.
+// Pair it once: on the PC, Bluetooth settings → add device → "AirController". Then open the page.
 //
 // The input→HID logic is in pad.h (tested on a laptop). This file is the Bluetooth HID device, the
 // WebSocket that carries the taps, and the flash that holds your saved layouts.
@@ -27,8 +27,8 @@
 #include "pad.h"
 #include "pad_page.h"
 
-const char *HOST = "pad";
-const char *BT_NAME = "Phone Pad";
+const char *HOST = "air";
+const char *BT_NAME = "AirController";
 
 WebServer web(80);
 static httpd_handle_t wsServer = nullptr;
@@ -165,7 +165,7 @@ void setup() {
   if (!LittleFS.begin(true)) Serial.println("pad: flash files could not be mounted");
   if (!LittleFS.exists("/lay")) LittleFS.mkdir("/lay");
 
-  const wifisetup::Config cfg = {HOST, "devkit-pad", "devkit-pad", "21", false};
+  const wifisetup::Config cfg = {HOST, "devkit-air", "devkit-air", "15", false};
   const bool online = wifisetup::begin(cfg, web);
   startBluetooth();                            // Bluetooth runs even while WiFi is still being set up
   if (!online) return;

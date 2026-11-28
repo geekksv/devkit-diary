@@ -1,4 +1,4 @@
-# 21 · Phone Pad
+# 15 · AirController
 
 > **Needs:** one ESP32 DevKit V1 on your home WiFi, a phone, and a PC with Bluetooth.
 > **Status:** written and tested on a laptop — the input→HID logic (24 checks) and the whole

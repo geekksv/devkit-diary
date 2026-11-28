@@ -92,7 +92,7 @@ void setup() {
   loadScores();
 
   // Without WiFi the game still works on the board alone: the LED and BOOT need no page.
-  const wifisetup::Config cfg = {HOST, "devkit-react", "devkit-reaction", "15", true};
+  const wifisetup::Config cfg = {HOST, "devkit-react", "devkit-reaction", "21", true};
   wifisetup::begin(cfg, web);
 
   web.on("/", [] {

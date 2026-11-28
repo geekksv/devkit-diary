@@ -1,4 +1,4 @@
-# 15 · Reaction
+# 21 · Reaction
 
 > **Needs:** one ESP32 DevKit V1. A phone for the scoreboard is nice, not needed.
 > **Status:** written and tested on a laptop. The rules (35 checks), and the real page in a
@@ -53,7 +53,7 @@ the chip's hardware random number generator, so you can't count it out.
 - `src/reaction/reaction.ino`: the LED, the button, WiFi and the web server.
 - `src/reaction/reaction.h`: the rules, testable on a laptop.
 - `src/reaction/reaction_page.h`: the page.
-- `src/reaction/wifi_setup.h`, `improv.h`, `ui.h`: WiFi setup, shared with chapters 7 to 14.
+- `src/reaction/wifi_setup.h`, `improv.h`, `ui.h`: WiFi setup, shared with chapters 7 to 20.
 - `tools/reaction_test.cpp`: the rules on a laptop:
   `c++ -std=c++17 -I../src/reaction reaction_test.cpp -o t && ./t`
 
