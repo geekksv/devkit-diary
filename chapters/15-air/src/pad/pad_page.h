@@ -199,7 +199,7 @@ function trackMove(wd,x,y,phase,count){
  if(phase==='start'){trackLast={x,y};trackMoved=0;trackStart=Date.now();}
  else if(phase==='move'&&trackLast){let dx=x-trackLast.x,dy=y-trackLast.y;trackLast={x,y};trackMoved+=Math.abs(dx)+Math.abs(dy);
   if(count>=2)send('s '+Math.round(-dy*0.3));else send('p '+Math.round(dx*1.6)+' '+Math.round(dy*1.6));}
- else if(phase==='end'){if(trackMoved<8&&Date.now()-trackStart<250)send('c 0 1;c 0 0');trackLast=null;}}
+ else if(phase==='end'){if(trackMoved<10&&Date.now()-trackStart<300){send('c 0 1');setTimeout(()=>send('c 0 0'),55);}trackLast=null;}}
 
 // ── multi-touch dispatch (play mode) ──
 function onTouch(e){if(document.body.classList.contains('edit'))return;
@@ -222,11 +222,12 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden){send('x');
 window.addEventListener('pagehide',()=>{try{navigator.sendBeacon('/release');}catch(e){}});
 
 // ── tilt steering ──
-let tiltOn=false;
-function enableTilt(){if(tiltOn)return;const go=()=>{window.addEventListener('deviceorientation',e=>{
+let tiltOn=false,tiltLast=0;
+function enableTilt(){if(tiltOn)return;const go=()=>{tiltOn=true;window.addEventListener('deviceorientation',e=>{
   const tilts=layout.widgets.filter(w=>w.type==='tilt');if(!tilts.length||document.body.classList.contains('edit'))return;
-  for(const w of tilts){let v=Math.max(-40,Math.min(40,e.gamma||0))/40*127;send('a '+(w.axis||0)+' '+Math.round(v));}});tiltOn=true;};
- if(typeof DeviceOrientationEvent!=='undefined'&&DeviceOrientationEvent.requestPermission)DeviceOrientationEvent.requestPermission().then(p=>{if(p==='granted')go();}).catch(()=>{});else go();}
+  const t=performance.now();if(t-tiltLast<40)return;tiltLast=t;
+  for(const w of tilts){let v=Math.max(-40,Math.min(40,e.gamma||0))/40*127;send('a '+(w.axis||0)+' '+Math.round(v));}});};
+ try{if(typeof DeviceOrientationEvent!=='undefined'&&DeviceOrientationEvent.requestPermission)DeviceOrientationEvent.requestPermission().then(p=>{if(p==='granted')go();else toast('Motion access was declined');}).catch(()=>go());else go();}catch(e){go();}}
 
 // ── EDIT: move / resize / add / edit ──
 let drag=null;
@@ -239,10 +240,13 @@ stage.addEventListener('touchstart',e=>{if(!document.body.classList.contains('ed
 stage.addEventListener('touchmove',e=>{if(!drag)return;e.preventDefault();const t=e.touches[0];const dx=(t.clientX-drag.sx)/W*24,dy=(t.clientY-drag.sy)/H*12;
  if(drag.mode==='mv'){drag.wd.x=Math.max(0,Math.min(24-drag.wd.w,Math.round((drag.x0+dx)*2)/2));drag.wd.y=Math.max(0,Math.min(12-drag.wd.h,Math.round((drag.y0+dy)*2)/2));}
  else{drag.wd.w=Math.max(2,Math.min(12,Math.round((drag.w0+dx)*2)/2));drag.wd.h=Math.max(2,Math.min(12,Math.round((drag.h0+dy)*2)/2));}
- render();},{passive:false});
-stage.addEventListener('touchend',()=>{if(drag){drag=null;saveLocal();}});
-function addWidget(type){const w={id:nextId++,type,x:10,y:4,w:type==='btn'?3.2:5,h:type==='btn'?3.6:5,color:COLORS[layout.widgets.length%6],label:type[0].toUpperCase()+type.slice(1)};
- if(type==='dpad')w.mode='wasd';if(type==='stick')w.side='R';if(type==='tilt')w.axis=0;
+ const el=elFor(drag.wd.id);if(el){const q=toPx(drag.wd);el.style.left=q.x+'px';el.style.top=q.y+'px';el.style.width=q.w+'px';el.style.height=q.h+'px';}},{passive:false});
+stage.addEventListener('touchend',()=>{if(drag){drag=null;render();saveLocal();saveToBoard();}});
+stage.addEventListener('touchcancel',()=>{if(drag){drag=null;render();}});
+function addWidget(type){const n=layout.widgets.length,ww=type==='btn'?3.2:5,hh=type==='btn'?3.6:5;
+ const col=n%5,row=Math.floor(n/5)%3;
+ const w={id:nextId++,type,x:Math.min(24-ww,1.3+col*4.4),y:Math.min(12-hh,1.3+row*3.5),w:ww,h:hh,color:COLORS[n%6],label:type[0].toUpperCase()+type.slice(1)};
+ if(type==='dpad')w.mode='wasd';if(type==='stick')w.side='R';if(type==='tilt'){w.axis=0;enableTilt();}
  layout.widgets.push(w);render();saveLocal();editWidget(w);}
 function bindLabel(b){if(!b)return'(nothing)';if(b.startsWith('key:'))return b.slice(4);if(b.startsWith('gp:'))return 'Gamepad '+GPNAMES[+b.slice(3)];if(b.startsWith('mouse:'))return b.slice(6)+' click';return b;}
 function keyFromChar(ch){if(!ch)return'';if(ch===' ')return'key:Space';const u=ch.toUpperCase();return KEYS[u]!=null?'key:'+u:'';}
