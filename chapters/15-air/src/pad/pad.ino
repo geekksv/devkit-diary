@@ -57,11 +57,11 @@ static const uint8_t HID_MAP[] = {
 
 static BLEHIDDevice *ble = nullptr;
 static BLECharacteristic *repKbd = nullptr, *repMouse = nullptr, *repGp = nullptr;
-static volatile bool btConnected = false;
+static volatile bool btConnected = false, justConnected = false;
 static volatile uint32_t msgs = 0;
 
 class SrvCb : public BLEServerCallbacks {
-  void onConnect(BLEServer *) { btConnected = true; Serial.println("pad: PC connected over Bluetooth"); }
+  void onConnect(BLEServer *) { btConnected = true; justConnected = true; Serial.println("pad: PC connected over Bluetooth"); }
   void onDisconnect(BLEServer *) { btConnected = false; Serial.println("pad: PC disconnected"); BLEDevice::startAdvertising(); }
 };
 class SecCb : public BLESecurityCallbacks {
@@ -109,7 +109,7 @@ static void startBluetooth() {
 
 // ── WebSocket: the phone's taps arrive here, a few bytes each ──
 static esp_err_t wsHandler(httpd_req_t *req) {
-  if (req->method == HTTP_GET) return ESP_OK;   // the handshake
+  if (req->method == HTTP_GET) { xSemaphoreTake(lock, portMAX_DELAY); hid.reset(); flushReports(); xSemaphoreGive(lock); return ESP_OK; }   // the handshake: start clean
   httpd_ws_frame_t f = {};
   f.type = HTTPD_WS_TYPE_TEXT;
   if (httpd_ws_recv_frame(req, &f, 0) != ESP_OK) return ESP_FAIL;
@@ -193,6 +193,10 @@ void setup() {
     }
   });
   web.on("/dellayout", [] { LittleFS.remove(layPath(web.arg("name"))); web.send(200, "application/json", "{\"ok\":true}"); });
+  web.on("/release", [] {                      // the page calls this when it closes, so nothing sticks
+    xSemaphoreTake(lock, portMAX_DELAY); hid.reset(); flushReports(); xSemaphoreGive(lock);
+    web.sendHeader("Cache-Control", "no-store"); web.send(200, "application/json", "{\"ok\":true}");
+  });
   web.on("/favicon.ico", [] { web.send(204); });
   web.onNotFound([] { web.send(404, "text/plain", "not here"); });
   web.begin();
@@ -202,6 +206,7 @@ void setup() {
 void loop() {
   wifisetup::loop();
   web.handleClient();
+  if (justConnected) { justConnected = false; xSemaphoreTake(lock, portMAX_DELAY); hid.reset(); flushReports(); xSemaphoreGive(lock); }
   // Flush any leftover mouse travel (a move bigger than one report can carry).
   if (hid.mouseDirty && btConnected) { xSemaphoreTake(lock, portMAX_DELAY); flushReports(); xSemaphoreGive(lock); }
   static uint32_t lastLog = 0;
